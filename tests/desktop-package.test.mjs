@@ -77,6 +77,26 @@ test("桌面打包同时提供 Windows Squirrel 与 macOS ZIP 产物", async () 
   ]);
 });
 
+test("本地架构文档与用户数据文件不会进入 Git 或桌面安装包", async () => {
+  const gitignore = await readFile(new URL(".gitignore", projectUrl), "utf8");
+  const forgeConfig = require("../forge.config.cjs");
+  const isPackagerIgnored = (filePath) =>
+    forgeConfig.packagerConfig.ignore.some((pattern) => pattern.test(filePath));
+
+  assert.match(gitignore, /^\/AI_README\.md$/m);
+  for (const filePath of [
+    "/AI_README.md",
+    "/.env",
+    "/.env.local",
+    "/cryptoreview.db",
+    "/orders.csv",
+    "/debug.log",
+    "/trade-export.mp4",
+  ]) {
+    assert.equal(isPackagerIgnored(filePath), true, `${filePath} 必须排除在安装包外`);
+  }
+});
+
 test("Windows Squirrel 首次安装、升级和卸载会维护应用快捷方式", async () => {
   const { getSquirrelStartupPlan } = await import("../desktop/squirrel-startup.mjs");
   const options = {

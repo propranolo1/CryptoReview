@@ -22,6 +22,24 @@
 .DS_Store
 *.pem
 
+# local-only architecture notes and user exports
+/AI_README.md
+/*.db
+/*.sqlite
+/*.sqlite3
+/*.csv
+/*.tsv
+/*.xls
+/*.xlsx
+/*.jpg
+/*.jpeg
+/*.png
+/*.webp
+/*.gif
+/*.mp4
+/*.webm
+/*.log
+
 # debug
 npm-debug.log*
 yarn-debug.log*
