@@ -108,6 +108,35 @@ test("相同账户订单在不同复盘用户下不会互相覆盖", () => {
   }
 });
 
+test("删除复盘用户会同时删除该用户的订单、复盘与档案", () => {
+  const repository = createDesktopRepository(":memory:");
+  const selfOrder = createOrder({ profileId: "profile-self" });
+  const customOrder = createOrder({
+    orderId: "custom-order",
+    profileId: "profile-custom",
+  });
+  const selfTrade = createTrade({ profileId: "profile-self" });
+  const customTrade = createTrade({ id: "custom-trade", profileId: "profile-custom" });
+
+  try {
+    repository.saveOrders([selfOrder, customOrder]);
+    repository.saveTrades([selfTrade, customTrade]);
+    repository.saveProfiles([
+      { id: "profile-self", name: "我的账户", createdAt: "2026-07-01T00:00:00.000Z" },
+      { id: "profile-custom", name: "阿杰", createdAt: "2026-08-15T00:00:00.000Z" },
+    ]);
+
+    repository.deleteProfile("profile-custom");
+
+    const state = repository.loadState();
+    assert.deepEqual(state.orders, [selfOrder]);
+    assert.deepEqual(state.trades, [selfTrade]);
+    assert.deepEqual(state.profiles.map((profile) => profile.id), ["profile-self"]);
+  } finally {
+    repository.close();
+  }
+});
+
 test("训练结果独立保存并按传入顺序整体替换", () => {
   const repository = createDesktopRepository(":memory:");
   const first = createTrainingResult();

@@ -140,6 +140,16 @@ export function createDesktopRepository(databasePath) {
     "INSERT INTO training_results (id, sort_order, payload) VALUES (?, ?, ?)",
   );
   const deleteProfiles = database.prepare("DELETE FROM user_profiles");
+  const deleteProfile = database.prepare("DELETE FROM user_profiles WHERE id = ?");
+  const deleteProfileOrders = database.prepare(
+    "DELETE FROM imported_orders WHERE json_extract(payload, '$.profileId') = ?",
+  );
+  const deleteProfileTrades = database.prepare(
+    "DELETE FROM replay_trades WHERE json_extract(payload, '$.profileId') = ?",
+  );
+  const deleteProfileOpenPositions = database.prepare(
+    "DELETE FROM exchange_open_positions WHERE json_extract(payload, '$.profileId') = ?",
+  );
   const insertProfile = database.prepare(
     "INSERT INTO user_profiles (id, sort_order, payload) VALUES (?, ?, ?)",
   );
@@ -296,6 +306,18 @@ export function createDesktopRepository(databasePath) {
         records.forEach((record, sortOrder) => {
           insertProfile.run(record.profile.id, sortOrder, record.payload);
         });
+      });
+    },
+
+    deleteProfile(profileId) {
+      ensureOpen(closed);
+      validateRequiredString(profileId, "复盘用户 ID");
+
+      runTransaction(database, () => {
+        deleteProfileOrders.run(profileId);
+        deleteProfileTrades.run(profileId);
+        deleteProfileOpenPositions.run(profileId);
+        deleteProfile.run(profileId);
       });
     },
 

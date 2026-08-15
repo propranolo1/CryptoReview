@@ -201,6 +201,7 @@ declare global {
     saveTrades(trades: readonly unknown[]): Promise<void>;
     saveTrainingResults(results: readonly unknown[]): Promise<void>;
     saveProfiles(profiles: readonly unknown[]): Promise<void>;
+    deleteProfile(profileId: string): Promise<void>;
     getInfo(): Promise<CryptoReviewDesktopInfo>;
     getUpdateStatus(): Promise<DesktopUpdateStatus>;
     checkForUpdates(): Promise<DesktopUpdateStatus>;

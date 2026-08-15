@@ -19,8 +19,17 @@ export function createTradeProfile(
   name: string,
   now?: number,
 ): TradeProfile;
+export function isProtectedTradeProfile(profileId: string): boolean;
+export function removeTradeProfile(
+  existingProfiles: unknown,
+  profileId: string,
+): TradeProfile[];
 export function getTradeProfileId(record: unknown): string;
 export function filterRecordsByTradeProfile<T>(
+  records: readonly T[] | unknown,
+  profileId: string,
+): T[];
+export function removeRecordsForTradeProfile<T>(
   records: readonly T[] | unknown,
   profileId: string,
 ): T[];

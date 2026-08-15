@@ -51,6 +51,11 @@ contextBridge.exposeInMainWorld("cryptoReviewDesktop", Object.freeze({
       "desktop:save-profiles",
       requireArray(profiles, "复盘用户"),
     ),
+  deleteProfile: (profileId) =>
+    ipcRenderer.invoke(
+      "desktop:delete-profile",
+      requireString(profileId, "复盘用户 ID"),
+    ),
   getInfo: () => ipcRenderer.invoke("desktop:get-info"),
   getUpdateStatus: () => ipcRenderer.invoke("desktop:update-status"),
   checkForUpdates: () => ipcRenderer.invoke("desktop:update-check"),

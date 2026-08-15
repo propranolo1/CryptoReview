@@ -1,7 +1,7 @@
 {
   "name": "cryptoreview-desktop",
   "productName": "CryptoReview",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Binance 与 OKX U 本位合约本地交易复盘桌面应用",
   "author": "xin",
   "license": "MIT",

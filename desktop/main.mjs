@@ -14,6 +14,7 @@ const IPC_CHANNELS = [
   "desktop:save-trades",
   "desktop:save-training-results",
   "desktop:save-profiles",
+  "desktop:delete-profile",
   "desktop:get-info",
   "desktop:update-status",
   "desktop:update-check",
@@ -103,6 +104,10 @@ export function registerDesktopIpc({
     }
     return handler(...args);
   };
+  ipcMain.handle(
+    "desktop:delete-profile",
+    trustedHandler((profileId) => repository.deleteProfile(profileId)),
+  );
   ipcMain.handle(
     "desktop:update-status",
     trustedHandler(() => updateService.getStatus()),

@@ -23,6 +23,7 @@ import {
   Sparkles,
   Sun,
   Target,
+  Trash2,
 } from "lucide-react";
 import {
   useCallback,
@@ -115,7 +116,10 @@ import {
   assignTradeProfile,
   createTradeProfile,
   filterRecordsByTradeProfile,
+  isProtectedTradeProfile,
   normalizeTradeProfiles,
+  removeRecordsForTradeProfile,
+  removeTradeProfile,
   type TradeProfile,
 } from "@/lib/trade-profiles.mjs";
 import {
@@ -1422,6 +1426,7 @@ export function TradeReplay() {
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [profileNameDraft, setProfileNameDraft] = useState("");
   const [profileCreateError, setProfileCreateError] = useState("");
+  const [profileDeleting, setProfileDeleting] = useState(false);
   const [trainingResults, setTrainingResults] = useState<TrainingResultRecord[]>([]);
   const [selectedId, setSelectedId] = useState(DEFAULT_TRADES[0].id);
   const [activeModule, setActiveModule] = useState<ActiveModule>("replay");
@@ -1478,6 +1483,7 @@ export function TradeReplay() {
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ??
     profiles[0] ??
     normalizeTradeProfiles([])[0];
+  const activeProfileCanDelete = !isProtectedTradeProfile(activeProfile.id);
   const activeProfileTrades = useMemo(
     () => filterRecordsByTradeProfile<ReplayTrade>(trades, activeProfile.id),
     [activeProfile.id, trades],
@@ -2189,6 +2195,47 @@ export function TradeReplay() {
     }
   };
 
+  const deleteActiveProfile = async () => {
+    if (!activeProfileCanDelete || profileDeleting) return;
+    const confirmed = window.confirm(
+      `确定删除用户“${activeProfile.name}”吗？该用户的订单和复盘记录也会从本机删除，且无法恢复。`,
+    );
+    if (!confirmed) return;
+
+    setProfileDeleting(true);
+    try {
+      if (persistenceMode === "desktop") {
+        const desktopApi = window.cryptoReviewDesktop;
+        if (!desktopApi) throw new Error("桌面删除接口不可用");
+        await desktopApi.deleteProfile(activeProfile.id);
+      }
+
+      const nextProfiles = removeTradeProfile(profiles, activeProfile.id);
+      const nextOrders = removeRecordsForTradeProfile<BinanceOrderRecord>(
+        orderArchiveRef.current,
+        activeProfile.id,
+      );
+      const nextTrades = removeRecordsForTradeProfile<ReplayTrade>(
+        tradesRef.current,
+        activeProfile.id,
+      );
+      orderArchiveRef.current = nextOrders;
+      tradesRef.current = nextTrades;
+      setProfiles(nextProfiles);
+      setOrderArchive(nextOrders);
+      setTrades(nextTrades);
+      setActiveProfileId(DEFAULT_TRADE_PROFILE_ID);
+      setSelectedDate(null);
+      setSelectedId(DEFAULT_TRADES[0].id);
+      setPlaying(false);
+      setImportNotice(`已删除复盘用户“${activeProfile.name}”及其本机订单和复盘记录。`);
+    } catch (error) {
+      setImportNotice(error instanceof Error ? error.message : "删除用户失败。");
+    } finally {
+      setProfileDeleting(false);
+    }
+  };
+
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -2711,6 +2758,21 @@ export function TradeReplay() {
               title="新建用户"
             >
               <UserPlus size={14} />
+            </button>
+            <button
+              type="button"
+              className="danger"
+              onClick={() => void deleteActiveProfile()}
+              disabled={
+                !activeProfileCanDelete ||
+                profileDeleting ||
+                !hydrated ||
+                persistenceMode === "loading"
+              }
+              aria-label="删除用户"
+              title={activeProfileCanDelete ? "删除用户" : "内置用户不可删除"}
+            >
+              <Trash2 size={14} />
             </button>
           </div>
           <button

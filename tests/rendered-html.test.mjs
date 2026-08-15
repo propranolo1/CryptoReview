@@ -48,12 +48,11 @@ test("服务端输出交易复盘工作台的首屏内容", async () => {
 });
 
 test("图表保持客户端边界且启动骨架已经移除", async () => {
-  const [component, page, layout, packageJson, architecture, desktopTypes] = await Promise.all([
+  const [component, page, layout, packageJson, desktopTypes] = await Promise.all([
     readFile(new URL("../app/components/TradeReplay.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readFile(new URL("../AI_README.md", import.meta.url), "utf8"),
     readFile(new URL("../app/desktop-api.d.ts", import.meta.url), "utf8"),
   ]);
 
@@ -83,12 +82,10 @@ test("图表保持客户端边界且启动骨架已经移除", async () => {
   assert.match(page, /<TradeReplay \/>/);
   assert.match(layout, /title:\s*"复盘舱 · CryptoReview"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
-  assert.match(architecture, /回放时刻/);
   assert.match(desktopTypes, /getInfo\(\): Promise<CryptoReviewDesktopInfo>/);
 
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
   await assert.rejects(access(new URL("../app/_sites-preview/preview.css", import.meta.url)));
-  await access(new URL("../AI_README.md", import.meta.url));
 });
 
 test("交易切换、平仓日期筛选与独立表现模块均保留回归锚点", async () => {

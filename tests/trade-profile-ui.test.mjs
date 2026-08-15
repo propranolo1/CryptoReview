@@ -4,7 +4,7 @@ import test from "node:test";
 
 const projectUrl = new URL("../", import.meta.url);
 
-test("顶部提供复盘用户切换和新建入口，导入只作用于当前用户", async () => {
+test("顶部提供复盘用户切换、新建和删除入口，导入只作用于当前用户", async () => {
   const [component, globals] = await Promise.all([
     readFile(new URL("app/components/TradeReplay.tsx", projectUrl), "utf8"),
     readFile(new URL("app/globals.css", projectUrl), "utf8"),
@@ -12,12 +12,18 @@ test("顶部提供复盘用户切换和新建入口，导入只作用于当前�
 
   assert.match(component, /复盘用户/);
   assert.match(component, /新建用户/);
+  assert.match(component, /删除用户/);
+  assert.match(component, /deleteActiveProfile/);
+  assert.match(component, /deleteProfile\(activeProfile\.id\)/);
+  assert.match(component, /removeRecordsForTradeProfile/);
   assert.match(component, /activeProfileId/);
   assert.match(component, /filterRecordsByTradeProfile/);
   assert.match(component, /导入到：\{activeProfile\.name\}/);
   assert.match(component, /<FollowTradeImport/);
   assert.match(component, /profileId:\s*activeProfileId/);
   assert.match(globals, /\.profile-switcher/);
+  assert.match(globals, /\.profile-switcher option\s*\{[^}]*background:\s*var\(--panel\)[^}]*color:\s*var\(--text\)/s);
+  assert.match(globals, /\.profile-switcher > button\.danger/);
   assert.match(globals, /\.profile-create-dialog/);
 });
 

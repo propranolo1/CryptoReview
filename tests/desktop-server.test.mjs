@@ -120,6 +120,9 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     saveTrainingResults(results) {
       calls.push(["saveTrainingResults", results]);
     },
+    deleteProfile(profileId) {
+      calls.push(["deleteProfile", profileId]);
+    },
   };
   const binanceApiService = {
     getStatus() {
@@ -217,6 +220,7 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     "desktop:binance-api-remove",
     "desktop:binance-api-status",
     "desktop:binance-api-sync-orders",
+    "desktop:delete-profile",
     "desktop:get-info",
     "desktop:load-state",
     "desktop:okx-api-configure",
@@ -244,11 +248,14 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
   await handlers.get("desktop:save-orders")(null, [{ orderId: "1" }]);
   await handlers.get("desktop:save-trades")(null, [{ id: "trade-1" }]);
   await handlers.get("desktop:save-training-results")(null, [{ id: "training-1" }]);
+  const trustedEvent = { senderFrame: { url: "http://127.0.0.1:41821/" } };
+  await handlers.get("desktop:delete-profile")(trustedEvent, "profile-custom");
   assert.deepEqual(calls, [
     ["loadState"],
     ["saveOrders", [{ orderId: "1" }]],
     ["saveTrades", [{ id: "trade-1" }]],
     ["saveTrainingResults", [{ id: "training-1" }]],
+    ["deleteProfile", "profile-custom"],
   ]);
   assert.deepEqual(await handlers.get("desktop:get-info")(), {
     appVersion: "0.2.0",
@@ -258,7 +265,6 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     storage: "sqlite",
     version: "0.2.0",
   });
-  const trustedEvent = { senderFrame: { url: "http://127.0.0.1:41821/" } };
   assert.equal(
     (await handlers.get("desktop:update-status")(trustedEvent)).state,
     "current",

@@ -204,6 +204,7 @@ test("preload 只暴露固定的桌面存储能力，不开放通用 IPC", async
   assert.match(preload, /ipcRenderer\.invoke\("desktop:save-orders"/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:save-trades"/);
   assert.match(preload, /ipcRenderer\.invoke\(\s*"desktop:save-training-results"/);
+  assert.match(preload, /ipcRenderer\.invoke\(\s*"desktop:delete-profile"/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:get-info"\)/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:update-status"\)/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:update-check"\)/);

@@ -328,6 +328,11 @@ body:has(.replay-app.theme-light) {
   outline: none;
 }
 
+.profile-switcher option {
+  background: var(--panel);
+  color: var(--text);
+}
+
 .profile-switcher > button {
   width: 28px;
   height: 28px;
@@ -344,6 +349,20 @@ body:has(.replay-app.theme-light) {
 .profile-switcher > button:hover {
   border-color: rgba(244, 184, 96, 0.42);
   background: var(--amber-soft);
+}
+
+.profile-switcher > button.danger {
+  color: var(--loss);
+}
+
+.profile-switcher > button.danger:not(:disabled):hover {
+  border-color: rgba(239, 101, 114, 0.42);
+  background: var(--loss-soft);
+}
+
+.profile-switcher > button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
 }
 
 .profile-switcher select:focus-visible,
