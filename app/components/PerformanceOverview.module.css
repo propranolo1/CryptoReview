@@ -1,0 +1,634 @@
+.panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 84% -20%, rgba(98, 168, 255, 0.08), transparent 36%),
+    linear-gradient(155deg, var(--panel-raised), var(--panel));
+  padding: 20px;
+  box-shadow: var(--performance-shadow);
+  color: var(--text);
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.header > div {
+  min-width: 0;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted-2);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.17em;
+}
+
+.header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+}
+
+.closedCount {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  padding: 6px 10px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.metrics article {
+  min-width: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 11px;
+  background: var(--card-overlay-strong);
+  padding: 14px 15px;
+}
+
+.metrics span,
+.metrics small {
+  display: block;
+  color: var(--muted);
+}
+
+.metrics span {
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+}
+
+.metrics strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: clamp(18px, 2vw, 25px);
+  font-weight: 720;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics small {
+  overflow: hidden;
+  margin-top: 7px;
+  font-size: 9px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profit {
+  color: var(--profit) !important;
+}
+
+.loss {
+  color: var(--loss) !important;
+}
+
+.neutral {
+  color: var(--text) !important;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 12px;
+}
+
+.chartCard {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 11px;
+  background: var(--card-overlay);
+  padding: 14px 14px 8px;
+}
+
+.chartHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  padding: 0 2px;
+}
+
+.chartHeading > div {
+  min-width: 0;
+}
+
+.chartHeading strong,
+.chartHeading span {
+  display: block;
+}
+
+.chartHeading strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.chartHeading span {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--muted-2);
+  font-size: 9px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chartHeading em {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.chartFrame {
+  position: relative;
+  min-width: 0;
+  margin-top: 6px;
+}
+
+.chartFrame svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: rgba(137, 145, 155, 0.09);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.baseline {
+  stroke: rgba(137, 145, 155, 0.38);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.axisLabel,
+.selectedAxisLabel {
+  fill: var(--muted-2);
+  font-family: "Inter", "Segoe UI", "PingFang SC", sans-serif;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.selectedAxisLabel {
+  fill: var(--amber);
+  font-weight: 700;
+}
+
+.profitStroke,
+.lossStroke {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.profitStroke {
+  stroke: var(--profit);
+}
+
+.lossStroke {
+  stroke: var(--loss);
+}
+
+.profitPoint,
+.lossPoint {
+  stroke: var(--panel);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.profitPoint {
+  fill: var(--profit);
+}
+
+.lossPoint {
+  fill: var(--loss);
+}
+
+.profitBar {
+  fill: var(--profit);
+  opacity: 0.8;
+}
+
+.lossBar {
+  fill: var(--loss);
+  opacity: 0.8;
+}
+
+.selectedBand {
+  fill: var(--amber-soft);
+}
+
+.selectedBar {
+  opacity: 1;
+  stroke: var(--amber);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.chartDatum {
+  outline: none;
+}
+
+.chartHitArea {
+  fill: transparent;
+  cursor: crosshair;
+  pointer-events: all;
+  stroke: transparent;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.chartDatum:focus-visible .chartHitArea {
+  fill: var(--amber-soft);
+  stroke: var(--amber);
+}
+
+.chartTooltip {
+  position: absolute;
+  z-index: 4;
+  min-width: 148px;
+  max-width: min(220px, calc(100% - 12px));
+  transform: translate(var(--tooltip-shift-x), var(--tooltip-shift-y));
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background: rgba(8, 11, 15, 0.96);
+  box-shadow: 0 9px 24px rgba(0, 0, 0, 0.28);
+  padding: 8px 10px;
+  color: #f4f6f8;
+  font-size: 9px;
+  line-height: 1.45;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.chartTooltip strong,
+.chartTooltip span {
+  display: block;
+}
+
+.chartTooltip strong {
+  margin-bottom: 3px;
+  font-size: 9px;
+  font-weight: 720;
+}
+
+.chartTooltip span {
+  color: rgba(244, 246, 248, 0.74);
+}
+
+.calendarCard {
+  overflow: visible;
+  margin-top: 12px;
+  padding-bottom: 14px;
+}
+
+.calendarLegend {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.calendarLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+  white-space: nowrap;
+}
+
+.calendarLegend i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.calendarLegendProfit {
+  background: var(--profit);
+}
+
+.calendarLegendLoss {
+  background: var(--loss);
+}
+
+.calendarMonths {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.calendarMonth {
+  min-width: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  background: var(--card-overlay-soft);
+  padding: 11px;
+}
+
+.calendarMonth h3 {
+  margin: 0 0 9px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 690;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendarWeekdays,
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.calendarWeekdays {
+  margin-bottom: 5px;
+}
+
+.calendarWeekdays span {
+  color: var(--muted-2);
+  font-size: 8px;
+  text-align: center;
+}
+
+.calendarDay,
+.calendarBlank {
+  min-width: 0;
+  min-height: 52px;
+}
+
+.calendarDay {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-direction: column;
+  gap: 3px;
+  outline: none;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  padding: 6px;
+  background: var(--panel-soft);
+  cursor: default;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendarDayProfit {
+  border-color: color-mix(in srgb, var(--profit) 28%, var(--border-soft));
+  background: color-mix(in srgb, var(--profit) var(--calendar-intensity), var(--panel-soft));
+}
+
+.calendarDayLoss {
+  border-color: color-mix(in srgb, var(--loss) 28%, var(--border-soft));
+  background: color-mix(in srgb, var(--loss) var(--calendar-intensity), var(--panel-soft));
+}
+
+.calendarDayNeutral {
+  background: var(--panel-soft);
+}
+
+.calendarDaySelected {
+  border-color: var(--amber);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
+
+.calendarDayOutside {
+  opacity: 0.38;
+}
+
+.calendarDay:focus-visible {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 2px var(--amber-soft);
+}
+
+.calendarDay time {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1;
+}
+
+.calendarDay > strong {
+  overflow: hidden;
+  width: 100%;
+  font-size: clamp(8px, 0.8vw, 10px);
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendarMuted {
+  color: var(--muted-2) !important;
+}
+
+.calendarTooltip {
+  position: absolute;
+  z-index: 6;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  display: none;
+  min-width: 170px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background: rgba(8, 11, 15, 0.97);
+  box-shadow: 0 9px 24px rgba(0, 0, 0, 0.3);
+  padding: 8px 10px;
+  color: #f4f6f8;
+  font-size: 9px;
+  line-height: 1.45;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendarTooltip b,
+.calendarTooltip span {
+  display: block;
+}
+
+.calendarTooltip b {
+  margin-bottom: 3px;
+}
+
+.calendarTooltip span {
+  color: rgba(244, 246, 248, 0.74);
+}
+
+.calendarDay:hover .calendarTooltip,
+.calendarDay:focus-visible .calendarTooltip {
+  display: block;
+}
+
+.calendarDay:nth-child(7n + 1) .calendarTooltip,
+.calendarDay:nth-child(7n + 2) .calendarTooltip {
+  left: 0;
+  transform: none;
+}
+
+.calendarDay:nth-child(7n) .calendarTooltip,
+.calendarDay:nth-child(7n - 1) .calendarTooltip {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+.feeNotice {
+  margin: 12px 0 0;
+  border-top: 1px solid var(--border-soft);
+  padding: 11px 2px 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.feeNotice::before {
+  content: "i";
+  display: inline-grid;
+  width: 15px;
+  height: 15px;
+  margin-right: 7px;
+  place-items: center;
+  border: 1px solid rgba(244, 184, 96, 0.35);
+  border-radius: 50%;
+  color: var(--amber);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.emptyState {
+  display: flex;
+  min-height: 210px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  border: 1px dashed var(--border);
+  border-radius: 11px;
+  background: var(--card-overlay-soft);
+  padding: 28px;
+  text-align: center;
+}
+
+.emptyState svg {
+  width: 76px;
+  margin-bottom: 12px;
+}
+
+.emptyState svg path {
+  fill: none;
+  stroke: var(--muted-2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.48;
+}
+
+.emptyState strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.emptyState span {
+  max-width: 500px;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+@media (max-width: 980px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: 14px;
+  }
+
+  .metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .metrics article {
+    padding: 12px 13px;
+  }
+
+  .chartCard {
+    padding: 12px 8px 6px;
+  }
+
+  .chartHeading {
+    padding: 0 5px;
+  }
+
+  .calendarCard {
+    padding-right: 8px;
+    padding-bottom: 10px;
+    padding-left: 8px;
+  }
+
+  .calendarMonth {
+    padding: 8px 6px;
+  }
+
+  .calendarWeekdays,
+  .calendarGrid {
+    gap: 3px;
+  }
+
+  .calendarDay,
+  .calendarBlank {
+    min-height: 45px;
+  }
+
+  .calendarDay {
+    padding: 5px 3px;
+  }
+
+  .calendarDay > strong {
+    font-size: 7px;
+  }
+}

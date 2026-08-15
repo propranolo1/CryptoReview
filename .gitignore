@@ -41,3 +41,6 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/public/ocr/
+/chi_sim.traineddata
+/eng.traineddata

@@ -73,6 +73,21 @@ test("空仓部分退出盈利但剩余仓位可产生未实现亏损", () => {
   assert.equal(result.returnRatePercent, -5);
 });
 
+test("当前仓位总盈亏把已发生的资金费计入已实现现金流", () => {
+  const result = calculateTradePnl({
+    side: "long",
+    quantity: 2,
+    entryPrice: 100,
+    fee: 0.08,
+    fundingFee: -0.75,
+  }, 110);
+
+  assert.equal(result.fundingFee, -0.75);
+  assert.equal(result.realizedPnl, -0.75);
+  assert.equal(result.unrealizedPnl, 19.92);
+  assert.equal(result.totalPnl, 19.17);
+});
+
 test("完全平仓时可直接使用顶层平仓价且不要求当前回放价", () => {
   const result = calculateTradePnl({
     side: "long",

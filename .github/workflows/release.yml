@@ -1,0 +1,41 @@
+name: 发布桌面版本
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 运行测试
+        run: npm test
+
+      - name: 生成 Windows 安装包
+        run: npm run desktop:make:win
+
+      - name: 创建 GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = Get-ChildItem "out/make/squirrel.windows/x64" -File | ForEach-Object { $_.FullName }
+          gh release create $env:GITHUB_REF_NAME $assets --verify-tag --title "CryptoReview $env:GITHUB_REF_NAME" --generate-notes

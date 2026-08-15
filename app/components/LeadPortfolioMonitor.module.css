@@ -1,0 +1,338 @@
+.triggerButton {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-raised);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.triggerButton:hover:not(:disabled) {
+  border-color: rgba(48, 196, 135, 0.42);
+  background: var(--profit-soft);
+}
+
+.triggerButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.triggerButton i {
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--profit);
+  box-shadow: 0 0 10px rgba(48, 196, 135, 0.55);
+}
+
+.dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-width: none;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--dialog-shadow);
+}
+
+.dialog::backdrop {
+  background: var(--dialog-backdrop-soft);
+  backdrop-filter: blur(7px);
+}
+
+.dialogShell {
+  background:
+    radial-gradient(circle at 88% -20%, rgba(48, 196, 135, 0.1), transparent 38%),
+    var(--panel);
+}
+
+.dialogShell > header {
+  padding: 20px 22px 17px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--profit);
+  font-size: 9px;
+  font-weight: 780;
+  letter-spacing: 0.17em;
+}
+
+.dialogShell h2 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.dialogShell header p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.closeButton {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.content {
+  padding: 18px 22px 20px;
+  display: grid;
+  gap: 15px;
+}
+
+.targetCard,
+.statusCard {
+  padding: 13px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.targetCard span,
+.targetCard strong,
+.targetCard small,
+.statusCard strong,
+.statusCard span {
+  display: block;
+}
+
+.targetCard span {
+  color: var(--muted-2);
+  font-size: 9px;
+}
+
+.targetCard strong {
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+.targetCard small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field > span {
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  outline: none;
+  background: var(--panel-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: rgba(48, 196, 135, 0.62);
+  box-shadow: 0 0 0 3px rgba(48, 196, 135, 0.1);
+}
+
+.field small {
+  color: var(--muted-2);
+  font-size: 9px;
+}
+
+.settingsRow {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 12px;
+}
+
+.switchField {
+  min-height: 66px;
+  margin-top: 20px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.switchField span,
+.switchField strong,
+.switchField small {
+  display: block;
+}
+
+.switchField strong {
+  font-size: 10px;
+}
+
+.switchField small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.switchField input {
+  width: 36px;
+  height: 20px;
+  accent-color: var(--profit);
+}
+
+.statusCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.statusCard > i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.online {
+  background: var(--profit);
+  box-shadow: 0 0 11px rgba(48, 196, 135, 0.5);
+}
+
+.paused {
+  background: var(--muted-2);
+}
+
+.statusCard strong {
+  font-size: 10px;
+}
+
+.statusCard span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(239, 101, 114, 0.28);
+  border-radius: 9px;
+  background: var(--loss-soft);
+  color: var(--loss);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.dialogShell > footer {
+  min-height: 62px;
+  padding: 11px 22px;
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialogShell > footer > div {
+  display: flex;
+  gap: 8px;
+}
+
+.dialogShell > footer button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-raised);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.dialogShell > footer button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.dialogShell > footer .primaryButton {
+  border-color: rgba(48, 196, 135, 0.55);
+  background: var(--profit);
+  color: #06130d;
+}
+
+.dialogShell > footer .dangerButton {
+  color: var(--loss);
+}
+
+.spinning {
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 620px) {
+  .settingsRow {
+    grid-template-columns: 1fr;
+  }
+
+  .switchField {
+    margin-top: 0;
+  }
+
+  .dialogShell > footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .dialogShell > footer > div,
+  .dialogShell > footer button {
+    width: 100%;
+  }
+}

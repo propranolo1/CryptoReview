@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  createBinanceFuturesKlineUrl,
+  parseBinanceKlines,
+} from "@/lib/market.mjs";
 
 const SUPPORTED_INTERVALS = new Set([
   "1m",
@@ -30,6 +34,7 @@ export async function GET(request: NextRequest) {
     .toUpperCase()
     .replace(/[\s/_-]/g, "");
   const interval = query.get("interval") ?? "1h";
+  const market = query.get("market") ?? "binance";
   const startTime = parseOptionalTimestamp(query.get("startTime"));
   const endTime = parseOptionalTimestamp(query.get("endTime"));
   const limit = Number(query.get("limit") ?? 500);
@@ -45,6 +50,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "不支持的 K 线时间框架。" }, { status: 400 });
   }
 
+  if (market !== "binance" && market !== "binance-futures") {
+    return NextResponse.json({ message: "不支持的行情数据源。" }, { status: 400 });
+  }
+
   if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
     return NextResponse.json({ message: "K 线数量必须是 1 到 1000 的整数。" }, { status: 400 });
   }
@@ -57,12 +66,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "开始时间不能晚于结束时间。" }, { status: 400 });
   }
 
-  const endpoint = new URL("https://data-api.binance.vision/api/v3/klines");
-  endpoint.searchParams.set("symbol", symbol);
-  endpoint.searchParams.set("interval", interval);
-  endpoint.searchParams.set("limit", String(limit));
-  if (startTime) endpoint.searchParams.set("startTime", String(startTime));
-  if (endTime) endpoint.searchParams.set("endTime", String(endTime));
+  const endpoint = market === "binance-futures"
+    ? new URL(createBinanceFuturesKlineUrl({
+        symbol,
+        interval,
+        startTime,
+        endTime,
+        limit,
+      }))
+    : new URL("https://data-api.binance.vision/api/v3/klines");
+
+  if (market === "binance") {
+    endpoint.searchParams.set("symbol", symbol);
+    endpoint.searchParams.set("interval", interval);
+    endpoint.searchParams.set("limit", String(limit));
+    if (startTime) endpoint.searchParams.set("startTime", String(startTime));
+    if (endTime) endpoint.searchParams.set("endTime", String(endTime));
+  }
 
   try {
     const response = await fetch(endpoint, {
@@ -73,7 +93,9 @@ export async function GET(request: NextRequest) {
     const payload = await response.json();
     if (!response.ok || !Array.isArray(payload)) {
       const upstreamMessage =
-        payload && typeof payload === "object" && "msg" in payload
+        response.status === 451
+          ? `Binance ${market === "binance-futures" ? "Futures" : "Spot"} 官方接口因当前网络位置受限，无法读取历史 K 线`
+          : payload && typeof payload === "object" && "msg" in payload
           ? String(payload.msg)
           : "行情服务暂时不可用";
       return NextResponse.json(
@@ -82,35 +104,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const candles = payload.map((item: unknown) => {
-      if (!Array.isArray(item) || item.length < 7) {
-        throw new TypeError("上游 K 线字段不完整");
-      }
-      const candle = {
-        time: Math.floor(Number(item[0]) / 1000),
-        open: Number(item[1]),
-        high: Number(item[2]),
-        low: Number(item[3]),
-        close: Number(item[4]),
-        volume: Number(item[5]),
-        closeTime: Number(item[6]),
-      };
-      if (
-        !Object.values(candle).every(Number.isFinite) ||
-        candle.low > Math.min(candle.open, candle.close) ||
-        candle.high < Math.max(candle.open, candle.close)
-      ) {
-        throw new TypeError("上游 K 线价格无效");
-      }
-      return candle;
-    });
-
-    if (candles.some((candle, index) => index > 0 && candle.time <= candles[index - 1].time)) {
-      throw new TypeError("上游 K 线时间不是严格递增");
-    }
-
+    const candles = parseBinanceKlines(payload);
     return NextResponse.json(
-      { source: "Binance Spot", symbol, interval, candles },
+      {
+        source: market === "binance-futures" ? "Binance Futures · USDⓈ-M 永续" : "Binance Spot",
+        symbol,
+        interval,
+        candles,
+      },
       {
         headers: {
           "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=600",
@@ -119,7 +120,9 @@ export async function GET(request: NextRequest) {
     );
   } catch {
     return NextResponse.json(
-      { message: "无法连接 Binance 历史行情，稍后可重试。" },
+      {
+        message: `无法连接 Binance ${market === "binance-futures" ? "Futures" : "Spot"} 历史行情，稍后可重试。`,
+      },
       { status: 502 },
     );
   }

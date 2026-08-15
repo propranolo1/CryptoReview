@@ -1,0 +1,45 @@
+.control {
+  height: 36px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 9px;
+  font-weight: 720;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.control:hover:not(:disabled) {
+  border-color: rgba(244, 184, 96, 0.42);
+  color: var(--text);
+}
+
+.control:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.available {
+  border-color: rgba(48, 196, 135, 0.42);
+  background: rgba(48, 196, 135, 0.08);
+  color: var(--profit);
+}
+
+.spinning {
+  animation: update-spin 900ms linear infinite;
+}
+
+@keyframes update-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1180px) {
+  .control span { display: none; }
+  .control { width: 36px; padding: 0; }
+}

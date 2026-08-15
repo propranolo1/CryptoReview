@@ -7,6 +7,15 @@ export interface TradeExit {
   fee: number;
 }
 
+export interface TradeEntry {
+  id: string;
+  sourceOrderId: string;
+  quantity: number;
+  entryPrice: number;
+  entryTime: string;
+  fee: number;
+}
+
 export interface NormalizedTrade {
   symbol: string;
   side: TradeSide;
@@ -18,6 +27,8 @@ export interface NormalizedTrade {
   exitPrice: number | null;
   exitTime: string | null;
   fee: number;
+  fundingFee?: number;
+  entries?: TradeEntry[];
   exits: TradeExit[];
 }
 
@@ -30,6 +41,7 @@ export interface TradePnlResult {
   totalPnl: number;
   returnRate: number;
   returnRatePercent: number;
+  fundingFee?: number;
 }
 
 export function calculatePositionPnl(params: {

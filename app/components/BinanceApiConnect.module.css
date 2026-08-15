@@ -1,0 +1,253 @@
+.triggerGroup {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.quickFeedback {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  right: 0;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-raised);
+  color: var(--text);
+  box-shadow: var(--dialog-shadow);
+  font-size: 9px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.triggerButton {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid rgba(98, 168, 255, 0.3);
+  border-radius: 9px;
+  background: rgba(98, 168, 255, 0.08);
+  color: #a9cdfc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.triggerButton:hover:not(:disabled) { background: rgba(98, 168, 255, 0.14); }
+.triggerButton:disabled { cursor: wait; opacity: 0.65; }
+
+.updateButton {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-raised);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.updateButton:hover:not(:disabled) {
+  border-color: rgba(98, 168, 255, 0.34);
+  background: rgba(98, 168, 255, 0.08);
+  color: #a9cdfc;
+}
+
+.updateButton:disabled { cursor: wait; opacity: 0.65; }
+
+.dialog {
+  width: min(700px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--dialog-shadow);
+}
+
+.dialog::backdrop { background: var(--dialog-backdrop); backdrop-filter: blur(7px); }
+.dialogShell { max-height: calc(100vh - 32px); overflow-y: auto; }
+
+.dialogHeader {
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.dialogHeader > div > span {
+  color: var(--blue);
+  font-size: 9px;
+  font-weight: 760;
+  letter-spacing: 0.14em;
+}
+
+.dialogHeader h2 { margin: 4px 0 0; font-size: 18px; }
+.dialogHeader p { margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.dialogHeader button {
+  width: 34px; height: 34px; padding: 0; border: 1px solid var(--border);
+  border-radius: 9px; background: var(--panel-soft); color: var(--muted);
+  display: grid; place-items: center; cursor: pointer;
+}
+
+.securityNotice {
+  margin: 18px 20px 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(48, 196, 135, 0.22);
+  border-radius: 10px;
+  background: var(--profit-soft);
+  color: var(--profit);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.securityNotice svg { flex: 0 0 auto; margin-top: 1px; }
+.securityNotice div { display: grid; gap: 3px; }
+.securityNotice strong { font-size: 11px; }
+.securityNotice span { color: var(--security-text); font-size: 9.5px; line-height: 1.55; }
+
+.content { padding: 18px 20px 20px; }
+
+.tabs {
+  margin-bottom: 12px;
+  padding: 3px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.tabs button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 740;
+  cursor: pointer;
+}
+
+.tabs button span {
+  color: var(--muted-2);
+  font-size: 8px;
+  font-weight: 650;
+}
+
+.tabs button .connected {
+  color: var(--profit);
+}
+
+.tabs .activeTab {
+  border-color: rgba(98, 168, 255, 0.24);
+  background: rgba(98, 168, 255, 0.08);
+  color: var(--text);
+}
+
+.panel {
+  padding: 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 11px;
+  background: var(--panel-soft);
+  display: grid;
+  gap: 13px;
+}
+
+.panelTitle { display: flex; align-items: center; gap: 9px; color: var(--amber); }
+.panelTitle div { display: grid; gap: 2px; }
+.panelTitle strong { color: var(--text); font-size: 12px; }
+.panelTitle span { color: var(--muted); font-size: 9px; }
+
+.panel label { display: grid; gap: 6px; color: var(--muted); font-size: 9.5px; }
+.panel input,
+.panel select {
+  width: 100%; height: 38px; padding: 0 11px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--input-bg); color: var(--text); font-size: 11px;
+}
+.panel select { cursor: pointer; }
+.panel small { color: var(--muted-2); font-size: 8.5px; line-height: 1.45; }
+
+.connectedRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.connectedRow div { display: flex; align-items: center; gap: 7px; }
+.connectedRow i { width: 7px; height: 7px; border-radius: 50%; background: var(--profit); box-shadow: 0 0 9px rgba(48, 196, 135, 0.5); }
+.connectedRow strong { font-size: 11px; }
+.connectedRow > span { color: var(--muted); font-size: 9px; }
+
+.dateGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.limitNote { margin: 0; color: var(--muted-2); font-size: 8.8px; line-height: 1.55; }
+.actions { display: flex; align-items: center; gap: 8px; }
+
+.primaryButton,
+.dangerButton {
+  min-height: 36px; padding: 0 12px; border-radius: 8px; display: inline-flex;
+  align-items: center; justify-content: center; gap: 7px; font-size: 10px;
+  font-weight: 700; cursor: pointer;
+}
+.primaryButton { border: 1px solid rgba(244, 184, 96, 0.35); background: var(--amber-soft); color: var(--amber); }
+.dangerButton { border: 1px solid rgba(239, 101, 114, 0.25); background: var(--loss-soft); color: var(--loss); }
+.primaryButton:disabled, .dangerButton:disabled { cursor: wait; opacity: 0.55; }
+
+.feedbackStack {
+  margin-top: 12px;
+  display: grid;
+  gap: 7px;
+}
+
+.feedback {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--profit-soft);
+  color: var(--profit-feedback);
+  display: grid;
+  gap: 2px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.feedback strong { font-size: 9px; }
+.feedback.error { background: var(--loss-soft); color: var(--loss-feedback); }
+.spin { animation: spin 700ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 650px) {
+  .triggerButton,
+  .updateButton { width: 34px; padding: 0; }
+  .triggerButton span,
+  .updateButton span { display: none; }
+  .dialog { width: calc(100vw - 16px); }
+  .dialogHeader, .content { padding-left: 14px; padding-right: 14px; }
+  .securityNotice { margin-left: 14px; margin-right: 14px; }
+  .dateGrid { grid-template-columns: 1fr; }
+  .actions { align-items: stretch; flex-direction: column; }
+  .connectedRow { align-items: flex-start; flex-direction: column; }
+}

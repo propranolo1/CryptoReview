@@ -1,0 +1,565 @@
+.triggerButton {
+  min-height: 27px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--amber) 42%, var(--border-soft));
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: color-mix(in srgb, var(--amber) 9%, var(--panel));
+  color: var(--text);
+  font: inherit;
+  font-size: 8.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.triggerButton:hover:not(:disabled) {
+  border-color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 15%, var(--panel));
+  transform: translateY(-1px);
+}
+
+.triggerButton svg {
+  color: var(--amber);
+}
+
+.triggerButton:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.dialog {
+  width: min(1360px, calc(100vw - 40px));
+  max-width: none;
+  max-height: calc(100vh - 40px);
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 38%);
+}
+
+.dialog::backdrop {
+  background: rgb(4 9 15 / 72%);
+  backdrop-filter: blur(8px);
+}
+
+.dialogShell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: calc(100vh - 42px);
+}
+
+.dialogHeader {
+  min-height: 90px;
+  padding: 19px 22px 17px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  background:
+    radial-gradient(circle at 18% -45%, color-mix(in srgb, var(--amber) 16%, transparent), transparent 56%),
+    var(--panel);
+}
+
+.dialogHeader h2 {
+  margin: 4px 0 5px;
+  font-size: 19px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.dialogHeader p {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
+.eyebrow {
+  color: var(--amber);
+  font-size: 7.5px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.closeButton {
+  width: 31px;
+  height: 31px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  display: inline-grid;
+  place-items: center;
+  background: var(--panel-raised);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.closeButton:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.closeButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.dialogBody {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  overflow: auto;
+}
+
+.settingsPanel {
+  padding: 18px;
+  border-right: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: color-mix(in srgb, var(--panel-raised) 56%, var(--panel));
+}
+
+.resolutionBadge {
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--amber) 26%, var(--border-soft));
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: color-mix(in srgb, var(--amber) 7%, var(--panel));
+}
+
+.resolutionBadge > svg {
+  color: var(--amber);
+}
+
+.resolutionBadge > div {
+  display: grid;
+  gap: 2px;
+}
+
+.resolutionBadge strong {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.resolutionBadge span {
+  color: var(--muted-2);
+  font-size: 8px;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.fieldGrid label,
+.speedField {
+  display: grid;
+  gap: 7px;
+}
+
+.fieldGrid label > span,
+.speedField > span {
+  color: var(--muted);
+  font-size: 8.5px;
+  font-weight: 700;
+}
+
+.fieldGrid input {
+  width: 100%;
+  height: 35px;
+  padding: 0 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  outline: none;
+  background: var(--input-bg, var(--panel));
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fieldGrid input:focus {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 12%, transparent);
+}
+
+.fieldGrid small {
+  color: var(--muted-2);
+  font-size: 7.5px;
+}
+
+.timeframeField {
+  display: grid;
+  gap: 8px;
+}
+
+.timeframeField > span {
+  color: var(--muted);
+  font-size: 8.5px;
+  font-weight: 700;
+}
+
+.timeframeField label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.timeframeField label > span {
+  color: var(--muted-2);
+  font-size: 7.5px;
+}
+
+.timeframeField select {
+  width: 100%;
+  height: 33px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  outline: none;
+  background: var(--input-bg, var(--panel));
+  color: var(--text);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 9px;
+}
+
+.timeframeField select:focus {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 12%, transparent);
+}
+
+.secondaryTimeframeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.speedField > div {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+
+.speedField button {
+  height: 31px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.speedField button:hover:not(:disabled) {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.speedField button.active {
+  border-color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 12%, var(--panel));
+  color: var(--amber);
+}
+
+.exportSummary {
+  margin: 0;
+  padding: 4px 0;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.exportSummary > div {
+  min-height: 31px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.exportSummary dt {
+  color: var(--muted-2);
+  font-size: 8px;
+}
+
+.exportSummary dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 8.5px;
+  font-weight: 650;
+  text-align: right;
+}
+
+.localNotice {
+  margin-top: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--muted-2);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.localNotice svg {
+  flex: 0 0 auto;
+  color: var(--profit);
+}
+
+.previewPanel {
+  min-width: 0;
+  padding: 16px 18px 18px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  background: color-mix(in srgb, var(--bg) 55%, var(--panel));
+}
+
+.previewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.previewHeader > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 7.5px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+}
+
+.previewHeader i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--profit);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--profit) 13%, transparent);
+}
+
+.previewHeader strong {
+  color: var(--amber);
+  font-size: 8.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvasWrap {
+  width: 100%;
+  border: 1px solid #243142;
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  background: #090f16;
+  box-shadow: 0 14px 34px rgb(0 0 0 / 18%);
+}
+
+.canvasWrap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.exportStatus {
+  padding: 11px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  display: grid;
+  gap: 8px;
+  background: var(--panel);
+}
+
+.exportStatus > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.exportStatus strong {
+  color: var(--text);
+  font-size: 8.5px;
+}
+
+.exportStatus span {
+  max-width: 52%;
+  overflow: hidden;
+  color: var(--muted-2);
+  font-size: 7.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progressTrack {
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--border-soft);
+}
+
+.progressTrack i {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: var(--amber);
+  transition: width 120ms linear;
+}
+
+.preparing,
+.recording,
+.saving {
+  border-color: color-mix(in srgb, var(--amber) 34%, var(--border-soft));
+}
+
+.completed {
+  border-color: color-mix(in srgb, var(--profit) 40%, var(--border-soft));
+}
+
+.completed .progressTrack i {
+  background: var(--profit);
+}
+
+.cancelled,
+.error {
+  border-color: color-mix(in srgb, var(--loss) 38%, var(--border-soft));
+}
+
+.cancelled .progressTrack i,
+.error .progressTrack i {
+  background: var(--loss);
+}
+
+.dialogFooter {
+  min-height: 64px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: var(--panel);
+}
+
+.dialogFooter > span {
+  color: var(--muted-2);
+  font-size: 8px;
+}
+
+.dialogFooter > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.secondaryButton,
+.cancelButton,
+.exportButton {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.secondaryButton,
+.cancelButton {
+  border: 1px solid var(--border-soft);
+  background: var(--panel-raised);
+  color: var(--muted);
+}
+
+.cancelButton {
+  color: var(--loss);
+}
+
+.exportButton {
+  border: 1px solid var(--amber);
+  background: var(--amber);
+  color: #111820;
+}
+
+.exportButton:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.exportButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 980px) {
+  .dialog {
+    width: min(940px, calc(100vw - 20px));
+    max-height: calc(100vh - 20px);
+  }
+
+  .dialogShell {
+    max-height: calc(100vh - 22px);
+  }
+
+  .dialogBody {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsPanel {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-soft);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resolutionBadge,
+  .exportSummary,
+  .localNotice {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .dialogHeader {
+    padding: 16px;
+  }
+
+  .dialogBody {
+    overflow: auto;
+  }
+
+  .settingsPanel {
+    padding: 14px;
+    display: flex;
+  }
+
+  .previewPanel {
+    padding: 14px;
+  }
+
+  .dialogFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dialogFooter > div {
+    justify-content: flex-end;
+  }
+}
