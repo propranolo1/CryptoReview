@@ -25,18 +25,22 @@ test("顶部版本按钮通过受限桌面 IPC 检查并安装更新", async () 
 });
 
 test("版本标签会触发 GitHub Actions 创建桌面 Release", async () => {
-  const [workflow, packageSource, forgeSource] = await Promise.all([
+  const [workflow, packageSource, packageLockSource, forgeSource] = await Promise.all([
     readFile(new URL(".github/workflows/release.yml", projectUrl), "utf8"),
     readFile(new URL("package.json", projectUrl), "utf8"),
+    readFile(new URL("package-lock.json", projectUrl), "utf8"),
     readFile(new URL("forge.config.cjs", projectUrl), "utf8"),
   ]);
   const packageJson = JSON.parse(packageSource);
+  const packageLock = JSON.parse(packageLockSource);
 
   assert.match(workflow, /tags:\s*\n\s*- ["']v\*/);
   assert.match(workflow, /contents:\s*write/);
   assert.match(workflow, /desktop:make:win/);
   assert.match(workflow, /gh release create/);
-  assert.equal(packageJson.version, "0.2.0");
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(packageLock.version, packageJson.version);
+  assert.equal(packageLock.packages[""].version, packageJson.version);
   assert.equal(packageJson.repository.url, "https://github.com/propranolo1/CryptoReview.git");
   assert.match(forgeSource, /@electron-forge\/maker-squirrel/);
 });
