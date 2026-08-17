@@ -12,6 +12,8 @@ test("导入菜单可以通过聪明钱 URL 自动建用户并完整同步关联
   assert.match(replay, /handleSmartMoneyImport/);
   assert.match(replay, /fullHistory:\s*true/);
   assert.match(replay, /source:\s*"smart-money-public"/);
+  assert.match(replay, /hasCompleteSmartMoneyOrderArchive/);
+  assert.match(replay, /allowHistoryOnlyOpenPositions/);
   assert.match(importer, /同步聪明钱/);
   assert.match(importer, /创建独立本地用户/);
   assert.match(importer, /smart-money\/profile/);

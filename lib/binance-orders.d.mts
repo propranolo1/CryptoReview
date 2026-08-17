@@ -131,6 +131,10 @@ export interface BinanceReconstructedReplay {
   openPosition?: Omit<BinanceOpenPosition, "syncedAt"> & {
     syncedAt: string | null;
   };
+  openPositionEvidence?: {
+    source: "complete-order-history";
+    syncedAt: string;
+  };
   reconstructionNotice: string;
   reportedRealizedPnl?: number;
 }
@@ -146,7 +150,11 @@ export function isBinanceUsdmOrderHistoryCsv(input: unknown): boolean;
 export function parseBinanceUsdmOrderHistoryCsv(input: string): BinanceUsdmOrder[];
 export function reconstructBinanceUsdmReplays(
   orders: BinanceUsdmOrder[],
-  options?: { openPositions?: BinanceOpenPosition[]; syncedAt?: string | number | null },
+  options?: {
+    openPositions?: BinanceOpenPosition[];
+    syncedAt?: string | number | null;
+    allowHistoryOnlyOpenPositions?: boolean;
+  },
 ): {
   trades: BinanceReconstructedReplay[];
   warnings: BinanceReplayWarning[];

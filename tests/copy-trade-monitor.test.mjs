@@ -180,6 +180,31 @@ test("公开当前持仓可与成交历史匹配为未平仓复盘", () => {
   assert.equal(result.trades[0].openPosition.markPrice, 60.25);
 });
 
+test("普通公开带单不能仅凭未闭合成交推定当前仍持仓", () => {
+  const payload = createPayload([
+    leadOrder({
+      symbol: "BTCUSDT",
+      side: "BUY",
+      positionSide: "LONG",
+      executedQty: 0.237,
+      avgPrice: 63173.3,
+      orderUpdateTime: 1_786_930_401_358,
+    }),
+  ]);
+  const orders = createPublicLeadOrderRecords(payload, {
+    portfolioId: PORTFOLIO_ID,
+    ...PROFILE,
+  });
+  const result = reconstructBinanceUsdmReplays(orders, {
+    syncedAt: payload.fetchedAt,
+    allowHistoryOnlyOpenPositions: true,
+  });
+
+  assert.equal(result.trades.length, 0);
+  assert.equal(result.warnings.length, 1);
+  assert.equal(result.warnings[0].code, "ambiguous_open_position");
+});
+
 test("快照差分只记录仓位变化，不伪造成交价格", () => {
   const previous = {
     fetchedAt: "2026-07-31T04:00:00.000Z",

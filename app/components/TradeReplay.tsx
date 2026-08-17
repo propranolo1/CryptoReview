@@ -192,6 +192,10 @@ type ReplayTrade = NormalizedTrade & {
   openPosition?: Omit<BinanceOpenPosition, "syncedAt"> & {
     syncedAt: string | null;
   };
+  openPositionEvidence?: {
+    source: "complete-order-history";
+    syncedAt: string;
+  };
   orderIds?: {
     entry: string;
     takeProfit: string;
@@ -203,7 +207,11 @@ type BinanceOrderRecord = BinanceUsdmOrder;
 
 function reconstructReplayableBinanceOrders(
   orders: BinanceOrderRecord[],
-  options?: { openPositions?: BinanceOpenPosition[]; syncedAt?: string | number | null },
+  options?: {
+    openPositions?: BinanceOpenPosition[];
+    syncedAt?: string | number | null;
+    allowHistoryOnlyOpenPositions?: boolean;
+  },
 ) {
   return reconstructBinanceUsdmReplays(orders, options);
 }
@@ -1819,7 +1827,9 @@ export function TradeReplay() {
       .sort((a, b) => a - b)
       .at(-1);
     const openPositionSnapshotMs = timeValue(
-      trade.openPosition?.syncedAt ?? trade.openPosition?.updateTime,
+      trade.openPosition?.syncedAt ??
+        trade.openPosition?.updateTime ??
+        trade.openPositionEvidence?.syncedAt,
     );
     const startTime = entryMs - intervalMs * EMA_WARMUP_CANDLES;
     const endTime = Math.max(
@@ -2556,9 +2566,16 @@ export function TradeReplay() {
         mergedOrders,
         targetProfile.id,
       ).filter((order) => order.userId === publicAccountId);
+      const hasCompleteSmartMoneyOrderArchive = Boolean(
+        smartMoneySource &&
+        snapshot.totalOrders > 0 &&
+        publicOrders.length === snapshot.totalOrders,
+      );
       const reconstruction = reconstructReplayableBinanceOrders(publicOrders, {
         openPositions,
         syncedAt: snapshot.fetchedAt,
+        allowHistoryOnlyOpenPositions:
+          hasCompleteSmartMoneyOrderArchive && openPositions.length === 0,
       });
       const nextTrades = mergeImportedReplays(
         tradesRef.current,
@@ -2609,8 +2626,11 @@ export function TradeReplay() {
         const warningText = warningCount > 0
           ? `另有 ${warningCount} 条提示，请在公开带单设置中核对。`
           : "";
+        const reconstructedOpenCount = reconstruction.trades.filter(
+          (trade) => trade.exitTime === null,
+        ).length;
         setImportNotice(
-          `已将 ${snapshot.nickname ?? "该交易员"}的 ${incomingOrders.length}/${snapshot.totalOrders} 条${smartMoneySource ? "聪明钱关联公开成交" : "公开成交"}同步到“${targetProfile.name}”，生成 ${reconstruction.trades.length} 笔复盘，当前 ${openPositions.length} 个未平仓仓位。${changesText}${warningText}公开记录不含手续费。`,
+          `已将 ${snapshot.nickname ?? "该交易员"}的 ${incomingOrders.length}/${snapshot.totalOrders} 条${smartMoneySource ? "聪明钱关联公开成交" : "公开成交"}同步到“${targetProfile.name}”，生成 ${reconstruction.trades.length} 笔复盘，当前 ${smartMoneySource ? reconstructedOpenCount : openPositions.length} 个未平仓仓位。${changesText}${warningText}公开记录不含手续费。`,
         );
       }
     } catch (error) {

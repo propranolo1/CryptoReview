@@ -121,6 +121,55 @@ test("关联公开成交保留聪明钱来源，并按现有 U 本位逻辑生�
   assert.deepEqual(reconstruction.trades[0].syncSources, ["smart-money-public"]);
 });
 
+test("聪明钱关联公开仓位为空时，完整成交历史仍可生成有证据标记的未平仓复盘", () => {
+  const fetchedAt = "2026-08-17T03:30:00.000Z";
+  const payload = {
+    portfolioId: LEAD_PORTFOLIO_ID,
+    fetchedAt,
+    detail: { leadPortfolioId: LEAD_PORTFOLIO_ID, nickname: "不停梭-" },
+    positions: [],
+    orderHistory: {
+      total: 1,
+      list: [
+        {
+          symbol: "BTCUSDT",
+          side: "BUY",
+          type: "LIMIT",
+          positionSide: "LONG",
+          executedQty: 0.237,
+          avgPrice: 63173.3,
+          totalPnl: 0,
+          orderUpdateTime: 1786930401358,
+          orderTime: 1786930401358,
+        },
+      ],
+    },
+  };
+  const orders = createPublicLeadOrderRecords(payload, {
+    portfolioId: LEAD_PORTFOLIO_ID,
+    profileId: DEFAULT_SMART_MONEY_PROFILE_ID,
+    profileName: "不停梭- · 1万U不停梭挑战",
+    source: "smart-money-public",
+    sourceIdentity: TOP_TRADER_ID,
+  });
+
+  const reconstruction = reconstructBinanceUsdmReplays(orders, {
+    syncedAt: fetchedAt,
+    allowHistoryOnlyOpenPositions: true,
+  });
+
+  assert.equal(reconstruction.warnings.length, 0);
+  assert.equal(reconstruction.trades.length, 1);
+  assert.equal(reconstruction.trades[0].symbol, "BTCUSDT");
+  assert.equal(reconstruction.trades[0].side, "long");
+  assert.equal(reconstruction.trades[0].exitTime, null);
+  assert.equal(reconstruction.trades[0].openPosition, undefined);
+  assert.deepEqual(reconstruction.trades[0].openPositionEvidence, {
+    source: "complete-order-history",
+    syncedAt: fetchedAt,
+  });
+});
+
 test("没有关联公开带单档案时明确拒绝伪造操作记录", () => {
   assert.throws(
     () => normalizeSmartMoneyProfileSnapshot({
