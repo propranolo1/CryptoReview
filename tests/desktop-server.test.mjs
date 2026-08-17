@@ -65,6 +65,69 @@ test("桌面本地服务提供 vinext 首页与客户端静态资源", async (t)
   );
 });
 
+test("桌面行情代理使用注入的 Electron 网络实现", async (t) => {
+  const upstreamRequests = [];
+  const server = await startLocalServer({
+    projectRoot,
+    fetchImpl(input, init) {
+      const endpoint = new URL(input instanceof Request ? input.url : input);
+      upstreamRequests.push({ endpoint, init });
+      return Promise.resolve(new Response(JSON.stringify([[
+        1784187000000,
+        "66.571",
+        "66.589",
+        "66.373",
+        "66.441",
+        "100",
+        1784187299999,
+        "6644.1",
+        308,
+        "60",
+        "3986.46",
+        "0",
+      ]]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    },
+  });
+  t.after(server.close);
+
+  const response = await requestRaw(
+    server.origin,
+    "/api/market/klines?symbol=HYPEUSDT&interval=5m&market=binance-futures&limit=1",
+  );
+  const payload = JSON.parse(response.body.toString("utf8"));
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.source, "Binance Futures · USDⓈ-M 永续");
+  assert.deepEqual(payload.candles, [{
+    time: 1784187000,
+    open: 66.571,
+    high: 66.589,
+    low: 66.373,
+    close: 66.441,
+    volume: 100,
+    closeTime: 1784187299999,
+    takerBuyVolume: 60,
+  }]);
+  assert.equal(upstreamRequests.length, 1);
+  assert.equal(upstreamRequests[0].endpoint.origin, "https://fapi.binance.com");
+  assert.equal(upstreamRequests[0].endpoint.pathname, "/fapi/v1/klines");
+});
+
+test("Electron 启动时向桌面本地服务注入 net.fetch", async () => {
+  const mainSource = await readFile(
+    path.join(projectRoot, "desktop", "main.mjs"),
+    "utf8",
+  );
+
+  assert.match(
+    mainSource,
+    /startLocalServer\(\{\s*projectRoot: app\.getAppPath\(\),\s*fetchImpl: \(input, init\) => net\.fetch\(input, init\),\s*\}\)/,
+  );
+});
+
 test("桌面本地服务拒绝目录穿越", async (t) => {
   const server = await startLocalServer({ projectRoot });
   t.after(server.close);

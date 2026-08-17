@@ -297,7 +297,10 @@ export async function bootstrapDesktopApp(electron) {
   });
   let localServer;
   try {
-    localServer = await startLocalServer({ projectRoot: app.getAppPath() });
+    localServer = await startLocalServer({
+      projectRoot: app.getAppPath(),
+      fetchImpl: (input, init) => net.fetch(input, init),
+    });
   } catch (error) {
     await Promise.resolve(repository.close());
     throw error;

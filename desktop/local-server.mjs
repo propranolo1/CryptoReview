@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -6,6 +7,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const DEFAULT_HOST = "127.0.0.1";
 const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PROJECT_ROOT = path.resolve(MODULE_DIRECTORY, "..");
+const DEFAULT_OUTBOUND_FETCH = globalThis.fetch.bind(globalThis);
+const OUTBOUND_FETCH_CONTEXT = new AsyncLocalStorage();
+let workerFetchBridgeInstalled = false;
+
+function fetchFromCurrentDesktopSession(input, init) {
+  const fetchImpl = OUTBOUND_FETCH_CONTEXT.getStore() ?? DEFAULT_OUTBOUND_FETCH;
+  return fetchImpl(input, init);
+}
 
 const CONTENT_TYPES = new Map([
   [".css", "text/css; charset=utf-8"],
@@ -190,7 +199,17 @@ export async function startLocalServer(options = {}) {
     options.serverEntry ?? path.join(projectRoot, "dist", "server", "index.js"),
   );
   const host = DEFAULT_HOST;
+  const fetchImpl = options.fetchImpl ?? DEFAULT_OUTBOUND_FETCH;
+  if (typeof fetchImpl !== "function") {
+    throw new TypeError("桌面本地服务网络实现不可用");
+  }
 
+  // vinext 的服务端路由在模块加载时捕获全局 fetch。先安装一个按请求上下文
+  // 转发的桥接层，使桌面版行情请求与订单同步共用 Electron 网络会话与系统代理。
+  if (!workerFetchBridgeInstalled) {
+    globalThis.fetch = fetchFromCurrentDesktopSession;
+    workerFetchBridgeInstalled = true;
+  }
   const workerModule = await import(pathToFileURL(serverEntry).href);
   const worker = workerModule.default;
   if (!worker || typeof worker.fetch !== "function") {
@@ -235,7 +254,10 @@ export async function startLocalServer(options = {}) {
       const staticResponse = await createAssetResponse(clientRoot, fetchRequest);
       const fetchResponse = staticResponse.ok
         ? staticResponse
-        : await worker.fetch(fetchRequest, env, executionContext);
+        : await OUTBOUND_FETCH_CONTEXT.run(
+            fetchImpl,
+            () => worker.fetch(fetchRequest, env, executionContext),
+          );
       await sendFetchResponse(fetchResponse, response, request.method);
     } catch (error) {
       console.error("桌面本地服务请求失败", error);
