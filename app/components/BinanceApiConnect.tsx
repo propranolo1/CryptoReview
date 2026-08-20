@@ -30,6 +30,7 @@ type Feedback = {
 type SyncRange = {
   startTime: number;
   endTime: number;
+  incremental?: boolean;
 };
 
 const EMPTY_BINANCE_STATUS: BinanceApiStatus = {
@@ -79,6 +80,9 @@ export function BinanceApiConnect({
   const [okxFeedback, setOkxFeedback] = useState<Feedback>(null);
   const [generalError, setGeneralError] = useState("");
   const [quickSummary, setQuickSummary] = useState("");
+  const [exchangeProgress, setExchangeProgress] = useState<
+    Partial<Record<ExchangeTab, ExchangeSyncProgress>>
+  >({});
 
   const suggestedSymbols = useMemo(
     () => [...new Set(defaultSymbols.map(normalizeSymbol).filter(Boolean))],
@@ -118,6 +122,17 @@ export function BinanceApiConnect({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const api = window.cryptoReviewDesktop;
+    if (!api || typeof api.onExchangeSyncProgress !== "function") return;
+    return api.onExchangeSyncProgress((progress) => {
+      setExchangeProgress((current) => ({
+        ...current,
+        [progress.provider]: progress,
+      }));
+    });
   }, []);
 
   const clearCredentialFields = () => {
@@ -239,12 +254,27 @@ export function BinanceApiConnect({
     api: CryptoReviewDesktopApi,
     range: SyncRange,
   ) => {
-    // 本机交易对仅作为补充种子，主进程仍会自动发现完整集合。
     const result = await api.syncBinanceOrders({
       symbols: suggestedSymbols,
       ...range,
     });
+    setExchangeProgress((current) => ({
+      ...current,
+      binance: {
+        provider: "binance",
+        stage: "rebuilding",
+        message: "正在重建 Binance 复盘",
+      },
+    }));
     await onSync(result);
+    setExchangeProgress((current) => ({
+      ...current,
+      binance: {
+        provider: "binance",
+        stage: "complete",
+        message: "Binance 更新完成",
+      },
+    }));
     setBinanceStatus(result.status);
     return formatBinanceSyncResult(result);
   };
@@ -254,7 +284,23 @@ export function BinanceApiConnect({
     range: SyncRange,
   ) => {
     const result = await api.syncOkxOrders(range);
+    setExchangeProgress((current) => ({
+      ...current,
+      okx: {
+        provider: "okx",
+        stage: "rebuilding",
+        message: "正在重建 OKX 复盘",
+      },
+    }));
     await onOkxSync(result);
+    setExchangeProgress((current) => ({
+      ...current,
+      okx: {
+        provider: "okx",
+        stage: "complete",
+        message: "OKX 更新完成",
+      },
+    }));
     setOkxStatus(result.status);
     return formatOkxSyncResult(result);
   };
@@ -264,6 +310,7 @@ export function BinanceApiConnect({
     if (!api) return;
     setBusy("binance-sync");
     setBinanceFeedback(null);
+    setExchangeProgress((current) => ({ ...current, binance: undefined }));
     try {
       const text = await syncBinanceData(api, getSyncRange(startDate, endDate));
       setBinanceFeedback({ kind: "success", text });
@@ -282,6 +329,7 @@ export function BinanceApiConnect({
     if (!api) return;
     setBusy("okx-sync");
     setOkxFeedback(null);
+    setExchangeProgress((current) => ({ ...current, okx: undefined }));
     try {
       const text = await syncOkxData(api, getSyncRange(startDate, endDate));
       setOkxFeedback({ kind: "success", text });
@@ -304,7 +352,7 @@ export function BinanceApiConnect({
 
     let range: SyncRange;
     try {
-      range = getSyncRange(startDate, endDate);
+      range = { ...getSyncRange(startDate, endDate), incremental: true };
     } catch (cause) {
       setGeneralError(errorText(cause, "同步日期范围无效"));
       setOpen(true);
@@ -316,6 +364,7 @@ export function BinanceApiConnect({
     setBinanceFeedback(null);
     setOkxFeedback(null);
     setQuickSummary("");
+    setExchangeProgress({});
 
     const jobs: Array<{
       exchange: ExchangeTab;
@@ -446,9 +495,9 @@ export function BinanceApiConnect({
             className={busy === "quick-sync" ? styles.spin : undefined}
           />
         </button>
-        {quickSummary && (
+        {(quickSummary || busy === "quick-sync") && (
           <span className={styles.quickFeedback} role="status">
-            {quickSummary}
+            {quickSummary || formatCombinedProgress(exchangeProgress)}
           </span>
         )}
       </div>
@@ -582,7 +631,7 @@ export function BinanceApiConnect({
                       onEndDateChange={setEndDate}
                     />
                     <p className={styles.limitNote}>
-                      基础委托、Algo 条件单、逐笔成交与当前未平仓会按日期读取；交易对会从收益流水和挂单自动发现，无需手填。
+                      手动同步读取所选完整日期范围；顶部更新按钮会从上次成功时间增量读取，并自动补查仍在活动的订单。
                     </p>
                     <div className={styles.actions}>
                       <button
@@ -698,7 +747,7 @@ export function BinanceApiConnect({
                       onEndDateChange={setEndDate}
                     />
                     <p className={styles.limitNote}>
-                      自动读取 USDT 永续基础单、条件单、逐笔成交与当前未平仓；交易对由 OKX 账户记录自动发现。
+                      手动同步读取所选完整日期范围；顶部更新按钮会从上次成功时间增量读取。USDT 永续合约信息会在本机短期缓存。
                     </p>
                     <div className={styles.actions}>
                       <button
@@ -729,8 +778,15 @@ export function BinanceApiConnect({
               </section>
             )}
 
-            {(generalError || binanceFeedback || okxFeedback) && (
+            {(generalError || binanceFeedback || okxFeedback ||
+              (busy !== null && (exchangeProgress.binance || exchangeProgress.okx))) && (
               <div className={styles.feedbackStack}>
+                {busy !== null && exchangeProgress.binance && (
+                  <SyncProgress progress={exchangeProgress.binance} label="Binance" />
+                )}
+                {busy !== null && exchangeProgress.okx && (
+                  <SyncProgress progress={exchangeProgress.okx} label="OKX" />
+                )}
                 {generalError && (
                   <div
                     className={`${styles.feedback} ${styles.error}`}
@@ -786,6 +842,31 @@ function ConnectionStatus({
           ? `上次同步 ${new Date(status.lastSyncedAt).toLocaleString("zh-CN")}`
           : "尚未同步"}
       </span>
+    </div>
+  );
+}
+
+function SyncProgress({
+  progress,
+  label,
+}: {
+  progress: ExchangeSyncProgress;
+  label: string;
+}) {
+  const determinate = Number.isInteger(progress.completed) &&
+    Number.isInteger(progress.total) &&
+    Number(progress.total) > 0;
+  return (
+    <div className={styles.syncProgress} role="status">
+      <div>
+        <strong>{label}</strong>
+        <span>{progress.message}</span>
+      </div>
+      <progress
+        {...(determinate
+          ? { value: Number(progress.completed), max: Number(progress.total) }
+          : {})}
+      />
     </div>
   );
 }
@@ -850,6 +931,14 @@ function formatOkxSyncResult(result: OkxApiSyncResult) {
     ? `；另有 ${result.warnings.length} 项提示`
     : "";
   return `更新 OKX 数据成功：自动发现 ${result.symbols.length} 个交易对，同步 ${result.normalOrderCount} 条基础委托、${result.algoOrderCount} 条条件单、${result.fillCount} 笔成交${warningText}。`;
+}
+
+function formatCombinedProgress(
+  progress: Partial<Record<ExchangeTab, ExchangeSyncProgress>>,
+) {
+  return [progress.binance?.message, progress.okx?.message]
+    .filter(Boolean)
+    .join("；") || "正在准备增量更新…";
 }
 
 function dateInputValue(timestamp: number) {

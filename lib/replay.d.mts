@@ -179,6 +179,13 @@ export function locateReplayFrameAtTime(
   minimumCursor?: number,
 ): ReplayFrameState;
 
+export function locateReplayCandleAtTime(
+  candles: Array<{ time: number; closeTime?: number }>,
+  timeMs: number,
+  minimumCursor?: number,
+  minimumPhase?: number,
+): ReplayFrameState;
+
 export function buildReplayProgressNodes(
   trade: {
     quantity: number;

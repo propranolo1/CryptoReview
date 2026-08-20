@@ -12,6 +12,7 @@ const IPC_CHANNELS = [
   "desktop:load-state",
   "desktop:save-orders",
   "desktop:save-trades",
+  "desktop:save-replay-snapshot",
   "desktop:save-training-results",
   "desktop:save-profiles",
   "desktop:delete-profile",
@@ -84,6 +85,9 @@ export function registerDesktopIpc({
   ipcMain.handle("desktop:save-trades", (_event, trades) =>
     repository.saveTrades(trades),
   );
+  ipcMain.handle("desktop:save-replay-snapshot", (_event, snapshot) =>
+    repository.saveReplaySnapshot(snapshot),
+  );
   ipcMain.handle("desktop:save-training-results", (_event, results) =>
     repository.saveTrainingResults(results),
   );
@@ -103,6 +107,23 @@ export function registerDesktopIpc({
       throw new Error("已拒绝不受信任页面调用桌面敏感能力");
     }
     return handler(...args);
+  };
+  const trustedEventHandler = (handler) => (event, ...args) => {
+    if (!isAllowedNavigation(event?.senderFrame?.url ?? "", serverOrigin)) {
+      throw new Error("已拒绝不受信任页面调用桌面敏感能力");
+    }
+    return handler(event, ...args);
+  };
+  const progressReporter = (event, provider) => (progress) => {
+    if (typeof event?.sender?.send !== "function" || event.sender.isDestroyed?.()) return;
+    const value = progress && typeof progress === "object" ? progress : {};
+    event.sender.send("desktop:exchange-sync-progress", {
+      provider,
+      stage: String(value.stage ?? "working").slice(0, 40),
+      message: String(value.message ?? "正在更新").slice(0, 160),
+      ...(Number.isSafeInteger(value.completed) ? { completed: value.completed } : {}),
+      ...(Number.isSafeInteger(value.total) ? { total: value.total } : {}),
+    });
   };
   ipcMain.handle(
     "desktop:delete-profile",
@@ -138,7 +159,10 @@ export function registerDesktopIpc({
   );
   ipcMain.handle(
     "desktop:binance-api-sync-orders",
-    trustedHandler((options) => binanceApiService.syncOrders(options)),
+    trustedEventHandler((event, options) => binanceApiService.syncOrders({
+      ...options,
+      onProgress: progressReporter(event, "binance"),
+    })),
   );
   ipcMain.handle(
     "desktop:binance-api-remove",
@@ -154,7 +178,10 @@ export function registerDesktopIpc({
   );
   ipcMain.handle(
     "desktop:okx-api-sync-orders",
-    trustedHandler((options) => okxApiService.syncOrders(options)),
+    trustedEventHandler((event, options) => okxApiService.syncOrders({
+      ...options,
+      onProgress: progressReporter(event, "okx"),
+    })),
   );
   ipcMain.handle(
     "desktop:okx-api-remove",

@@ -505,3 +505,24 @@ test("交易所同步时间在关闭重开后随每个未平仓快照恢复", ()
     temporary.cleanup();
   }
 });
+
+test("订单与复盘快照在同一事务中保存并完整恢复", () => {
+  const temporary = createTemporaryDatabase();
+  const repository = createDesktopRepository(temporary.databasePath);
+  const orders = [createOrder({
+    userId: "snapshot-account",
+    symbol: "BTCUSDT",
+    orderId: "snapshot-order",
+  })];
+  const trades = [{ id: "snapshot-trade", symbol: "BTCUSDT" }];
+
+  try {
+    repository.saveReplaySnapshot({ orders, trades });
+    const state = repository.loadState();
+    assert.deepEqual(state.orders, orders);
+    assert.deepEqual(state.trades, trades);
+  } finally {
+    repository.close();
+    temporary.cleanup();
+  }
+});

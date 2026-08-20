@@ -106,6 +106,9 @@ declare global {
     openPositionCount: number;
     syncedAt: number;
     status: BinanceApiStatus;
+    syncMode: "incremental" | "full";
+    requestedStartTime: number;
+    effectiveStartTime: number;
   }
 
   type OkxApiRegion = "global" | "us" | "eea";
@@ -173,6 +176,17 @@ declare global {
     syncedAt: number;
     status: OkxApiStatus;
     warnings?: OkxApiWarning[];
+    syncMode: "incremental" | "full";
+    requestedStartTime: number;
+    effectiveStartTime: number;
+  }
+
+  interface ExchangeSyncProgress {
+    provider: "binance" | "okx";
+    stage: string;
+    message: string;
+    completed?: number;
+    total?: number;
   }
 
   interface VideoExportBeginResult {
@@ -199,6 +213,10 @@ declare global {
     loadState(): Promise<CryptoReviewDesktopState>;
     saveOrders(orders: readonly unknown[]): Promise<void>;
     saveTrades(trades: readonly unknown[]): Promise<void>;
+    saveReplaySnapshot(snapshot: {
+      orders: readonly unknown[];
+      trades: readonly unknown[];
+    }): Promise<void>;
     saveTrainingResults(results: readonly unknown[]): Promise<void>;
     saveProfiles(profiles: readonly unknown[]): Promise<void>;
     deleteProfile(profileId: string): Promise<void>;
@@ -216,6 +234,7 @@ declare global {
       symbols: string[];
       startTime: number;
       endTime: number;
+      incremental?: boolean;
     }): Promise<BinanceApiSyncResult>;
     removeBinanceApi(): Promise<BinanceApiStatus>;
     getOkxApiStatus(): Promise<OkxApiStatus>;
@@ -228,7 +247,11 @@ declare global {
     syncOkxOrders(options: {
       startTime: number;
       endTime: number;
+      incremental?: boolean;
     }): Promise<OkxApiSyncResult>;
+    onExchangeSyncProgress(
+      listener: (progress: ExchangeSyncProgress) => void,
+    ): () => void;
     removeOkxApi(): Promise<OkxApiStatus>;
     beginVideoExport(options: {
       suggestedName: string;

@@ -61,6 +61,7 @@ import {
   getReplayOpenInterestPoints,
   getReplayTimeMs,
   getReplayVolume,
+  locateReplayCandleAtTime,
   locateReplayFrameAtTime,
   type ReplayProgressAction,
 } from "@/lib/replay.mjs";
@@ -746,6 +747,7 @@ function CandleReplayChart({
   indicatorVisibility,
   volumeColoringConfig,
   orderFlowAvailable,
+  onSeekToTime,
 }: {
   candles: Candle[];
   openInterest: OpenInterestPoint[];
@@ -757,6 +759,7 @@ function CandleReplayChart({
   indicatorVisibility: IndicatorVisibility;
   volumeColoringConfig: VolumeColoringConfig;
   orderFlowAvailable: boolean;
+  onSeekToTime: (timeMs: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -781,11 +784,18 @@ function CandleReplayChart({
   const [ready, setReady] = useState(false);
   const showOpenInterest = indicatorVisibility.openInterest && openInterest.length > 0;
   const showOrderFlow = orderFlowAvailable;
+  const onSeekToTimeRef = useRef(onSeekToTime);
+
+  useEffect(() => {
+    onSeekToTimeRef.current = onSeekToTime;
+  }, [onSeekToTime]);
 
   useEffect(() => {
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
     let chart: IChartApi | null = null;
+    let chartContainer: HTMLDivElement | null = null;
+    let handleDoubleClick: ((event: MouseEvent) => void) | null = null;
 
     void (async () => {
       const library = await import("lightweight-charts");
@@ -796,7 +806,8 @@ function CandleReplayChart({
       const chartSeparator = "rgba(17, 24, 39, 0.12)";
       const candleColor = "#111111";
 
-      chart = library.createChart(containerRef.current, {
+      chartContainer = containerRef.current;
+      chart = library.createChart(chartContainer, {
         autoSize: true,
         layout: {
           background: { type: library.ColorType.Solid, color: chartBackground },
@@ -836,6 +847,16 @@ function CandleReplayChart({
           priceFormatter: formatPrice,
         },
       });
+
+      handleDoubleClick = (event: MouseEvent) => {
+        if (!chart || !chartContainer) return;
+        const coordinate = event.clientX - chartContainer.getBoundingClientRect().left;
+        const targetTime = chart.timeScale().coordinateToTime(coordinate);
+        if (typeof targetTime !== "number" || !Number.isFinite(targetTime)) return;
+        event.preventDefault();
+        onSeekToTimeRef.current(targetTime * 1000);
+      };
+      chartContainer.addEventListener("dblclick", handleDoubleClick);
 
       const series = chart.addSeries(library.CandlestickSeries, {
         upColor: "transparent",
@@ -1041,6 +1062,9 @@ function CandleReplayChart({
 
     return () => {
       disposed = true;
+      if (chartContainer && handleDoubleClick) {
+        chartContainer.removeEventListener("dblclick", handleDoubleClick);
+      }
       resizeObserver?.disconnect();
       chart?.remove();
       chartRef.current = null;
@@ -1465,6 +1489,8 @@ export function TradeReplay() {
   const profileDialogRef = useRef<HTMLDialogElement>(null);
   const orderArchiveRef = useRef<BinanceOrderRecord[]>([]);
   const tradesRef = useRef<ReplayTrade[]>(DEFAULT_TRADES);
+  const skipNextOrderAutoSaveRef = useRef<BinanceOrderRecord[] | null>(null);
+  const skipNextTradeAutoSaveRef = useRef<ReplayTrade[] | null>(null);
   const publicLeadSyncingRef = useRef<Set<string>>(new Set());
   const pendingTimeframeReplayRef = useRef<{
     tradeId: string;
@@ -1473,13 +1499,17 @@ export function TradeReplay() {
     playing: boolean;
   } | null>(null);
 
-  const mergeIntoOrderArchive = useCallback((incomingOrders: unknown) => {
+  const mergeIntoOrderArchive = useCallback((
+    incomingOrders: unknown,
+    options: { skipAutoSave?: boolean } = {},
+  ) => {
     const mergedOrders = mergeBinanceOrderRecords(
       orderArchiveRef.current,
       incomingOrders,
     );
     // 两家交易所可同时完成更新；先同步 ref，避免后完成的回调读取旧闭包并覆盖另一家订单。
     orderArchiveRef.current = mergedOrders;
+    if (options.skipAutoSave) skipNextOrderAutoSaveRef.current = mergedOrders;
     setOrderArchive(mergedOrders);
     return mergedOrders;
   }, []);
@@ -1733,6 +1763,12 @@ export function TradeReplay() {
       return;
     }
 
+    if (skipNextTradeAutoSaveRef.current === trades) {
+      skipNextTradeAutoSaveRef.current = null;
+      return;
+    }
+    skipNextTradeAutoSaveRef.current = null;
+
     let cancelled = false;
     void desktopApi.saveTrades(trades).catch(() => {
       if (!cancelled) {
@@ -1765,6 +1801,12 @@ export function TradeReplay() {
       setImportNotice("桌面保存接口不可用，本次修改仍保留在当前页面。");
       return;
     }
+
+    if (skipNextOrderAutoSaveRef.current === orderArchive) {
+      skipNextOrderAutoSaveRef.current = null;
+      return;
+    }
+    skipNextOrderAutoSaveRef.current = null;
 
     let cancelled = false;
     void desktopApi.saveOrders(orderArchive).catch(() => {
@@ -2022,6 +2064,17 @@ export function TradeReplay() {
       });
     },
     [candles.length, entryIndex, replayStartPhase],
+  );
+
+  const seekReplayToTime = useCallback(
+    (timeMs: number) => {
+      if (candles.length === 0) return;
+      setPlaying(false);
+      setReplayFrame(
+        locateReplayCandleAtTime(candles, timeMs, entryIndex, replayStartPhase),
+      );
+    },
+    [candles, entryIndex, replayStartPhase],
   );
 
   const togglePlayback = useCallback(() => {
@@ -2323,6 +2376,7 @@ export function TradeReplay() {
   };
 
   const handleBinanceApiSync = async (result: BinanceApiSyncResult) => {
+    const desktopApi = window.cryptoReviewDesktop;
     const selfProfile = profiles.find((profile) => profile.id === DEFAULT_TRADE_PROFILE_ID) ??
       normalizeTradeProfiles([])[0];
     const incomingOrders = mergeBinanceOrderRecords([], assignTradeProfile(
@@ -2330,7 +2384,9 @@ export function TradeReplay() {
       selfProfile,
       { omitDefault: true },
     ));
-    const mergedOrders = mergeIntoOrderArchive(incomingOrders);
+    const mergedOrders = mergeIntoOrderArchive(incomingOrders, {
+      skipAutoSave: Boolean(desktopApi),
+    });
     const accountIds = new Set([
       ...incomingOrders.map((order) => order.userId),
       ...result.openPositions.map((position) => position.userId),
@@ -2353,6 +2409,7 @@ export function TradeReplay() {
       { accountId: result.accountId, profileId: selfProfile.id },
     );
     tradesRef.current = nextTrades;
+    if (desktopApi) skipNextTradeAutoSaveRef.current = nextTrades;
     setTrades(nextTrades);
     setActiveProfileId(selfProfile.id);
     if (reconstruction.trades[0]) setSelectedId(reconstruction.trades[0].id);
@@ -2360,7 +2417,6 @@ export function TradeReplay() {
     setActiveModule("replay");
     setPlaying(false);
 
-    const desktopApi = window.cryptoReviewDesktop;
     if (desktopApi) {
       await persistDesktopReplaySnapshot(desktopApi, {
         orders: mergedOrders,
@@ -2377,6 +2433,7 @@ export function TradeReplay() {
   };
 
   const handleOkxApiSync = async (result: OkxApiSyncResult) => {
+    const desktopApi = window.cryptoReviewDesktop;
     const selfProfile = profiles.find((profile) => profile.id === DEFAULT_TRADE_PROFILE_ID) ??
       normalizeTradeProfiles([])[0];
     const incomingOrders = mergeBinanceOrderRecords([], assignTradeProfile(
@@ -2384,7 +2441,9 @@ export function TradeReplay() {
       selfProfile,
       { omitDefault: true },
     ));
-    const mergedOrders = mergeIntoOrderArchive(incomingOrders);
+    const mergedOrders = mergeIntoOrderArchive(incomingOrders, {
+      skipAutoSave: Boolean(desktopApi),
+    });
     const providerOrders = filterRecordsByTradeProfile<BinanceOrderRecord>(
       mergedOrders.filter((order) => order.userId === result.accountId),
       selfProfile.id,
@@ -2403,6 +2462,7 @@ export function TradeReplay() {
       { accountId: result.accountId, profileId: selfProfile.id },
     );
     tradesRef.current = nextTrades;
+    if (desktopApi) skipNextTradeAutoSaveRef.current = nextTrades;
     setTrades(nextTrades);
     setActiveProfileId(selfProfile.id);
     if (reconstruction.trades[0]) setSelectedId(reconstruction.trades[0].id);
@@ -2410,7 +2470,6 @@ export function TradeReplay() {
     setActiveModule("replay");
     setPlaying(false);
 
-    const desktopApi = window.cryptoReviewDesktop;
     if (desktopApi) {
       await persistDesktopReplaySnapshot(desktopApi, {
         orders: mergedOrders,
@@ -2558,7 +2617,10 @@ export function TradeReplay() {
         profileName: targetProfile.name,
         ...sourceOptions,
       });
-      const mergedOrders = mergeIntoOrderArchive(incomingOrders);
+      const desktopApi = window.cryptoReviewDesktop;
+      const mergedOrders = mergeIntoOrderArchive(incomingOrders, {
+        skipAutoSave: Boolean(desktopApi),
+      });
       const publicAccountId = smartMoneySource
         ? `smart-money:${smartMoneySource.topTraderId}`
         : `copy-public:${config.portfolioId}`;
@@ -2582,6 +2644,7 @@ export function TradeReplay() {
         reconstruction.trades,
       );
       tradesRef.current = nextTrades;
+      if (desktopApi) skipNextTradeAutoSaveRef.current = nextTrades;
       setTrades(nextTrades);
 
       const positionChanges = diffPublicLeadSnapshots(
@@ -2612,7 +2675,6 @@ export function TradeReplay() {
         setPlaying(false);
       }
 
-      const desktopApi = window.cryptoReviewDesktop;
       if (desktopApi) {
         await persistDesktopReplaySnapshot(desktopApi, {
           orders: mergedOrders,
@@ -3287,6 +3349,7 @@ export function TradeReplay() {
                 indicatorVisibility={indicatorVisibility}
                 volumeColoringConfig={volumeColoringConfig}
                 orderFlowAvailable={orderFlowAvailable}
+                onSeekToTime={seekReplayToTime}
               />
               {loading && <div className="chart-loading"><span />正在载入历史行情</div>}
               <div className="chart-legend">

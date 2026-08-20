@@ -1,3 +1,5 @@
+import { resolveExchangeSyncRange } from "../lib/exchange-sync.mjs";
+
 /** 协调 OKX 凭证保险库、只读客户端与本地订单存档。 */
 export function createOkxApiService({ repository, vault, client }) {
   if (
@@ -34,10 +36,19 @@ export function createOkxApiService({ repository, vault, client }) {
       syncInProgress = true;
       try {
         const credentials = vault.read();
+        const syncRange = resolveExchangeSyncRange({
+          ...options,
+          lastSyncedAt: options?.incremental
+            ? vault.getStatus?.().lastSyncedAt ?? null
+            : null,
+        });
         const result = await client.syncOrders({
           ...options,
+          startTime: syncRange.startTime,
+          endTime: syncRange.endTime,
           ...credentials,
         });
+        options?.onProgress?.({ stage: "saving", message: "正在保存同步快照" });
         repository.saveExchangeSyncSnapshot({
           provider: "okx-swap",
           accountId: credentials.accountId,
@@ -46,7 +57,14 @@ export function createOkxApiService({ repository, vault, client }) {
           syncedAt: result.syncedAt,
         });
         const status = vault.markSynced(result.syncedAt);
-        return { ...result, status };
+        options?.onProgress?.({ stage: "complete", message: "OKX 更新完成" });
+        return {
+          ...result,
+          status,
+          syncMode: syncRange.incremental ? "incremental" : "full",
+          requestedStartTime: syncRange.requestedStartTime,
+          effectiveStartTime: syncRange.startTime,
+        };
       } finally {
         syncInProgress = false;
       }

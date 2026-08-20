@@ -7,7 +7,8 @@ module.exports = {
     appCategoryType: "public.app-category.finance",
     ignore: [
       /^\/(?:\.agents|\.git|\.openai|\.vinext|\.wrangler|\.next|out)(?:\/|$)/,
-      /^\/(?:app|build|db|drizzle|examples|lib|public|tests|worker)(?:\/|$)/,
+      /^\/(?:app|build|db|drizzle|examples|public|tests|worker)(?:\/|$)/,
+      /^\/lib\/(?!exchange-sync\.mjs$)/,
       /^\/node_modules(?:\/|$)/,
       /^\/(?:\.env(?:\..*)?|.*\.(?:db|sqlite|sqlite3|csv|tsv|xlsx?|log|jpe?g|png|webp|gif|mp4|webm))$/i,
       /^\/(?:AI_README\.md|README\.md|drizzle\.config\.ts|eslint\.config\.mjs|next\.config\.ts|postcss\.config\.mjs|tsconfig\.json|tsconfig\.tsbuildinfo|vite\.config\.ts|worker-configuration\.d\.ts)$/,

@@ -13,6 +13,7 @@ import {
   getReplayOpenInterestPoints,
   getReplayTimeMs,
   getReplayVolume,
+  locateReplayCandleAtTime,
   locateReplayFrameAtTime,
 } from "../lib/replay.mjs";
 
@@ -75,6 +76,23 @@ test("切换时间周期后按同一回放时间定位游标和单根 K 线进�
   assert.deepEqual(
     locateReplayFrameAtTime(candles, 1_799_999_000_000, 1),
     { cursor: 1, phase: 0 },
+  );
+});
+
+test("双击回放图表按目标时间定位到对应 K 线完成状态", () => {
+  const candles = [
+    { time: 1_800_000_000, closeTime: 1_800_003_599_999 },
+    { time: 1_800_003_600, closeTime: 1_800_007_199_999 },
+    { time: 1_800_007_200, closeTime: 1_800_010_799_999 },
+  ];
+
+  assert.deepEqual(
+    locateReplayCandleAtTime(candles, 1_800_007_200_000, 1, 0.35),
+    { cursor: 2, phase: 1 },
+  );
+  assert.deepEqual(
+    locateReplayCandleAtTime(candles, 1_799_999_000_000, 1, 0.35),
+    { cursor: 1, phase: 0.35 },
   );
 });
 

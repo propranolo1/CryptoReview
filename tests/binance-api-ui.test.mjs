@@ -25,6 +25,10 @@ test("桌面端提供 Binance API 连接、加密提示和基础/条件单同步
   assert.doesNotMatch(component, /symbolText/);
   assert.match(component, /更新 Binance 数据/);
   assert.match(component, /quickSync/);
+  assert.match(component, /incremental:\s*true/);
+  assert.match(component, /onExchangeSyncProgress/);
+  assert.match(component, /exchangeProgress/);
+  assert.match(styles, /\.syncProgress/);
   assert.match(component, /getBinanceApiStatus/);
   assert.match(styles, /\.triggerGroup/);
   assert.match(styles, /\.updateButton/);

@@ -236,6 +236,25 @@
 }
 .feedback strong { font-size: 9px; }
 .feedback.error { background: var(--loss-soft); color: var(--loss-feedback); }
+.syncProgress {
+  padding: 10px 12px;
+  border: 1px solid rgba(98, 168, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(98, 168, 255, 0.07);
+  display: grid;
+  gap: 8px;
+}
+.syncProgress > div { display: flex; align-items: center; gap: 7px; }
+.syncProgress strong { color: var(--text); font-size: 9px; }
+.syncProgress span { color: var(--muted); font-size: 9px; }
+.syncProgress progress {
+  width: 100%;
+  height: 5px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  accent-color: var(--blue);
+}
 .spin { animation: spin 700ms linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

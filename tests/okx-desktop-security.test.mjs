@@ -264,6 +264,9 @@ test("OKX API service 验证后保存身份，同步订单并更新时间", asyn
       openPositions: [],
       syncedAt: 1785300000000,
       status: { configured: true, lastSyncedAt: 1785300000000 },
+      syncMode: "full",
+      requestedStartTime: 1,
+      effectiveStartTime: 1,
     },
   );
   assert.deepEqual(calls, [

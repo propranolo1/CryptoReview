@@ -88,6 +88,18 @@ test("图表保持客户端边界且启动骨架已经移除", async () => {
   await assert.rejects(access(new URL("../app/_sites-preview/preview.css", import.meta.url)));
 });
 
+test("回放图表双击会按横坐标时间暂停并定位 K 线", async () => {
+  const component = await readFile(
+    new URL("../app/components/TradeReplay.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(component, /addEventListener\("dblclick"/);
+  assert.match(component, /coordinateToTime/);
+  assert.match(component, /onSeekToTime/);
+  assert.match(component, /locateReplayCandleAtTime/);
+});
+
 test("交易切换、平仓日期筛选与独立表现模块均保留回归锚点", async () => {
   const [component, performance, performanceStyles, globals] = await Promise.all([
     readFile(new URL("../app/components/TradeReplay.tsx", import.meta.url), "utf8"),

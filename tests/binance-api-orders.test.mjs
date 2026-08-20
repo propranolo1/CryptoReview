@@ -758,3 +758,102 @@ test("单个时间窗口达到 1000 条时会继续细分，避免 Binance 历�
     { startTime: midpoint + 1, endTime },
   ]);
 });
+
+test("Binance 历史请求使用有限并发并持续报告完成进度", async () => {
+  const now = 1784189000000;
+  let activeHistoryRequests = 0;
+  let maxActiveHistoryRequests = 0;
+  const progress = [];
+  const client = createBinanceUsdmClient({
+    now: () => now,
+    sleep: async () => {},
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      if (url.pathname === "/fapi/v1/time") {
+        return Response.json({ serverTime: now });
+      }
+      const historyRequest = [
+        "/fapi/v1/allOrders",
+        "/fapi/v1/allAlgoOrders",
+        "/fapi/v1/userTrades",
+      ].includes(url.pathname);
+      if (historyRequest) {
+        activeHistoryRequests += 1;
+        maxActiveHistoryRequests = Math.max(
+          maxActiveHistoryRequests,
+          activeHistoryRequests,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        activeHistoryRequests -= 1;
+      }
+      return Response.json([]);
+    },
+  });
+
+  await client.syncOrders({
+    apiKey: "synthetic-key",
+    apiSecret: "synthetic-secret",
+    accountId: "synthetic-account",
+    symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+    startTime: now - 86_400_000,
+    endTime: now,
+    onProgress: (value) => progress.push(value),
+  });
+
+  assert.equal(maxActiveHistoryRequests > 1, true);
+  assert.equal(maxActiveHistoryRequests <= 4, true);
+  assert.equal(
+    progress.some((item) =>
+      item.stage === "history" && item.completed === 9 && item.total === 9
+    ),
+    true,
+  );
+});
+
+test("Binance 增量同步会按 ID 补查本地长期活动的基础单与 Algo 单", async () => {
+  const now = 1784189000000;
+  const requestedPaths = [];
+  const normalOrder = {
+    avgPrice: "100", cumQuote: "100", executedQty: "1", orderId: 101,
+    origQty: "1", origType: "MARKET", price: "0", side: "BUY",
+    status: "FILLED", stopPrice: "0", symbol: "BTCUSDT",
+    time: now - 10 * 86_400_000, updateTime: now - 1_000,
+  };
+  const algoOrder = {
+    algoId: 202, orderType: "STOP_MARKET", symbol: "BTCUSDT", side: "SELL",
+    positionSide: "BOTH", quantity: "1", algoStatus: "CANCELED",
+    triggerPrice: "95", price: "0", createTime: now - 10 * 86_400_000,
+    updateTime: now - 1_000, triggerTime: 0,
+  };
+  const client = createBinanceUsdmClient({
+    now: () => now,
+    sleep: async () => {},
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/fapi/v1/time") {
+        return Response.json({ serverTime: now });
+      }
+      if (url.pathname === "/fapi/v1/order") return Response.json(normalOrder);
+      if (url.pathname === "/fapi/v1/algoOrder") return Response.json(algoOrder);
+      return Response.json([]);
+    },
+  });
+
+  const result = await client.syncOrders({
+    apiKey: "synthetic-key",
+    apiSecret: "synthetic-secret",
+    accountId: "synthetic-account",
+    symbols: [],
+    knownActiveOrders: [
+      { symbol: "BTCUSDT", orderId: "101", kind: "normal" },
+      { symbol: "BTCUSDT", orderId: "202", kind: "algo" },
+    ],
+    startTime: now - 86_400_000,
+    endTime: now,
+  });
+
+  assert.equal(requestedPaths.includes("/fapi/v1/order"), true);
+  assert.equal(requestedPaths.includes("/fapi/v1/algoOrder"), true);
+  assert.deepEqual(result.orders.map((order) => order.orderId).sort(), ["101", "algo:202"]);
+});

@@ -180,6 +180,9 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     saveTrades(trades) {
       calls.push(["saveTrades", trades]);
     },
+    saveReplaySnapshot(snapshot) {
+      calls.push(["saveReplaySnapshot", snapshot]);
+    },
     saveTrainingResults(results) {
       calls.push(["saveTrainingResults", results]);
     },
@@ -201,7 +204,9 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
       return { configured: false };
     },
     syncOrders(options) {
-      calls.push(["binanceSync", options]);
+      const { onProgress, ...input } = options;
+      calls.push(["binanceSync", input]);
+      onProgress({ stage: "history", completed: 1, total: 2, message: "读取中" });
       return { orders: [], syncedAt: 1784189000000 };
     },
   };
@@ -219,7 +224,9 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
       return { configured: false };
     },
     syncOrders(options) {
-      calls.push(["okxSync", options]);
+      const { onProgress, ...input } = options;
+      calls.push(["okxSync", input]);
+      onProgress({ stage: "saving", message: "保存中" });
       return { orders: [], syncedAt: 1785300000000 };
     },
   };
@@ -292,6 +299,7 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     "desktop:okx-api-sync-orders",
     "desktop:save-orders",
     "desktop:save-profiles",
+    "desktop:save-replay-snapshot",
     "desktop:save-trades",
     "desktop:save-training-results",
     "desktop:update-check",
@@ -310,13 +318,28 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
   });
   await handlers.get("desktop:save-orders")(null, [{ orderId: "1" }]);
   await handlers.get("desktop:save-trades")(null, [{ id: "trade-1" }]);
+  await handlers.get("desktop:save-replay-snapshot")(null, {
+    orders: [{ orderId: "2" }],
+    trades: [{ id: "trade-2" }],
+  });
   await handlers.get("desktop:save-training-results")(null, [{ id: "training-1" }]);
-  const trustedEvent = { senderFrame: { url: "http://127.0.0.1:41821/" } };
+  const progressEvents = [];
+  const trustedEvent = {
+    senderFrame: { url: "http://127.0.0.1:41821/" },
+    sender: {
+      isDestroyed: () => false,
+      send: (channel, progress) => progressEvents.push([channel, progress]),
+    },
+  };
   await handlers.get("desktop:delete-profile")(trustedEvent, "profile-custom");
   assert.deepEqual(calls, [
     ["loadState"],
     ["saveOrders", [{ orderId: "1" }]],
     ["saveTrades", [{ id: "trade-1" }]],
+    ["saveReplaySnapshot", {
+      orders: [{ orderId: "2" }],
+      trades: [{ id: "trade-2" }],
+    }],
     ["saveTrainingResults", [{ id: "training-1" }]],
     ["deleteProfile", "profile-custom"],
   ]);
@@ -392,6 +415,20 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     ),
     { orders: [], syncedAt: 1785300000000 },
   );
+  assert.deepEqual(progressEvents, [
+    ["desktop:exchange-sync-progress", {
+      provider: "binance",
+      stage: "history",
+      message: "读取中",
+      completed: 1,
+      total: 2,
+    }],
+    ["desktop:exchange-sync-progress", {
+      provider: "okx",
+      stage: "saving",
+      message: "保存中",
+    }],
+  ]);
   assert.deepEqual(
     await handlers.get("desktop:okx-api-remove")(trustedEvent),
     { configured: false },

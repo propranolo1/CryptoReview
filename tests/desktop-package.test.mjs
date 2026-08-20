@@ -95,6 +95,12 @@ test("本地架构文档与用户数据文件不会进入 Git 或桌面安装包
   ]) {
     assert.equal(isPackagerIgnored(filePath), true, `${filePath} 必须排除在安装包外`);
   }
+  assert.equal(isPackagerIgnored("/lib/replay.mjs"), true);
+  assert.equal(
+    isPackagerIgnored("/lib/exchange-sync.mjs"),
+    false,
+    "桌面同步服务依赖的纯函数模块必须进入安装包",
+  );
 });
 
 test("Windows Squirrel 首次安装、升级和卸载会维护应用快捷方式", async () => {
@@ -203,6 +209,7 @@ test("preload 只暴露固定的桌面存储能力，不开放通用 IPC", async
   assert.match(preload, /ipcRenderer\.invoke\("desktop:load-state"\)/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:save-orders"/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:save-trades"/);
+  assert.match(preload, /ipcRenderer\.invoke\("desktop:save-replay-snapshot"/);
   assert.match(preload, /ipcRenderer\.invoke\(\s*"desktop:save-training-results"/);
   assert.match(preload, /ipcRenderer\.invoke\(\s*"desktop:delete-profile"/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:get-info"\)/);
@@ -218,6 +225,8 @@ test("preload 只暴露固定的桌面存储能力，不开放通用 IPC", async
   assert.match(preload, /ipcRenderer\.invoke\("desktop:okx-api-configure"/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:okx-api-sync-orders"/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:okx-api-remove"\)/);
+  assert.match(preload, /onExchangeSyncProgress/);
+  assert.match(preload, /desktop:exchange-sync-progress/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:video-export-begin"/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:video-export-append"/);
   assert.match(preload, /"desktop:video-export-complete"/);

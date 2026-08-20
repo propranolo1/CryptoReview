@@ -18,6 +18,8 @@ const ALGO_HISTORY_STATES = [
   "order_failed",
   "partially_failed",
 ];
+const SYNC_CONCURRENCY = 4;
+const INSTRUMENT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 /**
  * 按 OKX V5 规则对 timestamp + method + requestPath + body 计算
@@ -282,6 +284,8 @@ export function createOkxClient({
   if (typeof fetchImpl !== "function") throw new TypeError("OKX HTTP 客户端不可用");
   if (typeof now !== "function") throw new TypeError("OKX 时钟不可用");
   if (typeof sleep !== "function") throw new TypeError("OKX 限流等待器不可用");
+  const endpointLimiters = new Map();
+  const instrumentCache = new Map();
 
   async function getServerTime(region) {
     const payload = await publicGet("/api/v5/public/time", {}, region, "OKX 校时失败");
@@ -319,6 +323,7 @@ export function createOkxClient({
     fallbackMessage = "OKX 私有接口请求失败",
   ) {
     for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt += 1) {
+      await limiterForPath(endpointLimiters, pathname, { now, sleep }).acquire();
       const query = buildQuery(params);
       const requestPath = query === "" ? pathname : `${pathname}?${query}`;
       const timestamp = new Date(
@@ -357,6 +362,30 @@ export function createOkxClient({
       return requirePayloadData(payload, fallbackMessage);
     }
     throw new Error(`${fallbackMessage}：超过限流重试上限`);
+  }
+
+  async function getInstruments(region) {
+    const cached = instrumentCache.get(region);
+    if (cached && cached.expiresAt > Number(now())) return cached.instruments;
+    const instrumentPayload = await publicGet(
+      "/api/v5/public/instruments",
+      { instType: "SWAP" },
+      region,
+      "OKX 永续合约元数据读取失败",
+    );
+    const instruments = new Map();
+    for (const raw of instrumentPayload) {
+      const instrument = normalizeOkxInstrument(raw);
+      if (instrument) instruments.set(instrument.instId, instrument);
+    }
+    if (instruments.size === 0) {
+      throw new Error("OKX 未返回可用的 USDT 线性永续合约元数据");
+    }
+    instrumentCache.set(region, {
+      expiresAt: Number(now()) + INSTRUMENT_CACHE_TTL_MS,
+      instruments,
+    });
+    return instruments;
   }
 
   async function paginatedSignedGet(
@@ -416,97 +445,95 @@ export function createOkxClient({
       const credentials = validateCredentials(input);
       const accountId = requiredIdentifier(input?.accountId, "OKX 本地账户标识");
       const range = normalizeHistoryRange(input?.startTime, input?.endTime, now());
+      emitProgress(input?.onProgress, { stage: "discovery", message: "正在读取 OKX 合约信息" });
       const serverTime = await getServerTime(credentials.region);
       const clockOffset = serverTime - normalizeTimestamp(now(), "OKX 本机时间");
-
-      const instrumentPayload = await publicGet(
-        "/api/v5/public/instruments",
-        { instType: "SWAP" },
-        credentials.region,
-        "OKX 永续合约元数据读取失败",
-      );
-      const instruments = new Map();
-      for (const raw of instrumentPayload) {
-        const instrument = normalizeOkxInstrument(raw);
-        if (instrument) instruments.set(instrument.instId, instrument);
-      }
-      if (instruments.size === 0) {
-        throw new Error("OKX 未返回可用的 USDT 线性永续合约元数据");
-      }
-
-      const pendingOrders = await paginatedSignedGet(
-        "/api/v5/trade/orders-pending",
-        { instType: "SWAP" },
-        "ordId",
-        credentials,
-        clockOffset,
-      );
+      const instruments = await getInstruments(credentials.region);
       const recentStart = Math.max(
         range.startTime,
         serverTime - RECENT_ORDER_HISTORY_MS,
       );
-      const recentOrders = recentStart <= range.endTime
-        ? await paginatedSignedGet(
-            "/api/v5/trade/orders-history",
-            {
-              instType: "SWAP",
-              begin: recentStart,
-              end: range.endTime,
-            },
-            "ordId",
-            credentials,
-            clockOffset,
-          )
-        : [];
-      const archivedOrders = await paginatedSignedGet(
-        "/api/v5/trade/orders-history-archive",
+      const tasks = [
         {
-          instType: "SWAP",
-          begin: range.startTime,
-          end: range.endTime,
+          key: "pendingOrders",
+          run: () => paginatedSignedGet(
+            "/api/v5/trade/orders-pending", { instType: "SWAP" }, "ordId", credentials, clockOffset,
+          ),
         },
-        "ordId",
-        credentials,
-        clockOffset,
-      );
-      const fillPayload = await paginatedSignedGet(
-        "/api/v5/trade/fills-history",
         {
-          instType: "SWAP",
-          begin: range.startTime,
-          end: range.endTime,
+          key: "recentOrders",
+          run: () => recentStart <= range.endTime
+            ? paginatedSignedGet(
+              "/api/v5/trade/orders-history",
+              { instType: "SWAP", begin: recentStart, end: range.endTime },
+              "ordId", credentials, clockOffset,
+            )
+            : Promise.resolve([]),
         },
-        "billId",
-        credentials,
-        clockOffset,
-      );
-      const positionPayload = await signedGet(
-        "/api/v5/account/positions",
-        { instType: "SWAP" },
-        credentials,
-        clockOffset,
-      );
-
-      const algoPayload = [];
+        {
+          key: "archivedOrders",
+          run: () => paginatedSignedGet(
+            "/api/v5/trade/orders-history-archive",
+            { instType: "SWAP", begin: range.startTime, end: range.endTime },
+            "ordId", credentials, clockOffset,
+          ),
+        },
+        {
+          key: "fillPayload",
+          run: () => paginatedSignedGet(
+            "/api/v5/trade/fills-history",
+            { instType: "SWAP", begin: range.startTime, end: range.endTime },
+            "billId", credentials, clockOffset,
+          ),
+        },
+        {
+          key: "positionPayload",
+          run: () => signedGet(
+            "/api/v5/account/positions", { instType: "SWAP" }, credentials, clockOffset,
+          ),
+        },
+      ];
       for (const ordType of ALGO_TYPES) {
-        algoPayload.push(...await paginatedSignedGet(
-          "/api/v5/trade/orders-algo-pending",
-          { ordType },
-          "algoId",
-          credentials,
-          clockOffset,
-        ));
+        tasks.push({
+          key: "algoPayload",
+          run: () => paginatedSignedGet(
+            "/api/v5/trade/orders-algo-pending", { ordType }, "algoId", credentials, clockOffset,
+          ),
+        });
         for (const state of ALGO_HISTORY_STATES) {
-          const history = await paginatedSignedGet(
-            "/api/v5/trade/orders-algo-history",
-            { ordType, state },
-            "algoId",
-            credentials,
-            clockOffset,
-          );
-          algoPayload.push(...history.filter((raw) => algoTouchesRange(raw, range)));
+          tasks.push({
+            key: "algoPayload",
+            run: async () => {
+              const history = await paginatedSignedGet(
+                "/api/v5/trade/orders-algo-history", { ordType, state }, "algoId", credentials, clockOffset,
+              );
+              return history.filter((raw) => algoTouchesRange(raw, range));
+            },
+          });
         }
       }
+      const taskResults = await runTasksWithConcurrency(
+        tasks,
+        SYNC_CONCURRENCY,
+        (completed, total) => emitProgress(input?.onProgress, {
+          stage: "history",
+          completed,
+          total,
+          message: `正在读取 OKX 账户记录 ${completed}/${total}`,
+        }),
+      );
+      const groupedResults = new Map();
+      taskResults.forEach((result, index) => {
+        const key = tasks[index].key;
+        groupedResults.set(key, [...(groupedResults.get(key) ?? []), ...result]);
+      });
+      const pendingOrders = groupedResults.get("pendingOrders") ?? [];
+      const recentOrders = groupedResults.get("recentOrders") ?? [];
+      const archivedOrders = groupedResults.get("archivedOrders") ?? [];
+      const fillPayload = groupedResults.get("fillPayload") ?? [];
+      const positionPayload = groupedResults.get("positionPayload") ?? [];
+      const algoPayload = groupedResults.get("algoPayload") ?? [];
+      emitProgress(input?.onProgress, { stage: "normalize", message: "正在整理 OKX 订单" });
 
       const warnings = [];
       const rawOrdersById = new Map();
@@ -596,7 +623,7 @@ export function createOkxClient({
         ...openPositions.map((position) => position.symbol),
       ])].sort();
 
-      return {
+      const result = {
         accountId,
         orders,
         symbols,
@@ -608,6 +635,8 @@ export function createOkxClient({
         syncedAt: normalizeTimestamp(now(), "OKX 同步完成时间"),
         warnings: deduplicateWarnings(warnings),
       };
+      emitProgress(input?.onProgress, { stage: "complete", message: "OKX 接口读取完成" });
+      return result;
     },
   };
 }
@@ -804,6 +833,75 @@ function rateLimitDelay(response, attempt) {
 
 function defaultSleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function limiterForPath(limiters, pathname, dependencies) {
+  let limiter = limiters.get(pathname);
+  if (!limiter) {
+    limiter = createEndpointLimiter(dependencies);
+    limiters.set(pathname, limiter);
+  }
+  return limiter;
+}
+
+function createEndpointLimiter({ now, sleep }) {
+  const requestBudget = 20;
+  const intervalMilliseconds = 2_000;
+  const refillPerMillisecond = requestBudget / intervalMilliseconds;
+  let available = requestBudget;
+  let updatedAt = Number(now());
+  let queue = Promise.resolve();
+  return {
+    acquire() {
+      const task = queue.then(async () => {
+        const current = Math.max(updatedAt, Number(now()));
+        available = Math.min(
+          requestBudget,
+          available + Math.max(0, current - updatedAt) * refillPerMillisecond,
+        );
+        updatedAt = current;
+        if (available < 1) {
+          const waitMilliseconds = Math.ceil((1 - available) / refillPerMillisecond);
+          await sleep(waitMilliseconds);
+          updatedAt += waitMilliseconds;
+          available = 0;
+        } else {
+          available -= 1;
+        }
+      });
+      queue = task.catch(() => {});
+      return task;
+    },
+  };
+}
+
+async function runTasksWithConcurrency(tasks, concurrency, onComplete) {
+  if (!tasks.length) return [];
+  const results = new Array(tasks.length);
+  let nextIndex = 0;
+  let completed = 0;
+  await Promise.all(Array.from(
+    { length: Math.min(concurrency, tasks.length) },
+    async () => {
+      while (nextIndex < tasks.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await tasks[index].run();
+        completed += 1;
+        onComplete?.(completed, tasks.length);
+      }
+    },
+  ));
+  return results;
+}
+
+function emitProgress(onProgress, progress) {
+  if (typeof onProgress !== "function") return;
+  try {
+    onProgress(progress);
+  } catch {
+    // 进度展示异常不能中断只读同步。
+  }
 }
 
 function sanitizeUpstreamMessage(value) {

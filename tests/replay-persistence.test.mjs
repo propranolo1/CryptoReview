@@ -4,23 +4,16 @@ import test from "node:test";
 
 const projectUrl = new URL("../", import.meta.url);
 
-test("API 更新完成前必须等待订单与复盘都写入桌面数据库", async () => {
+test("API 更新完成前通过单次原子快照等待订单与复盘写入桌面数据库", async () => {
   const { persistDesktopReplaySnapshot } = await import(
     "../lib/replay-persistence.mjs"
   );
-  const resolvers = {};
   const calls = [];
   const desktopApi = {
-    saveOrders(orders) {
-      calls.push(["orders", orders]);
+    saveReplaySnapshot(snapshot) {
+      calls.push(["snapshot", snapshot]);
       return new Promise((resolve) => {
-        resolvers.orders = resolve;
-      });
-    },
-    saveTrades(trades) {
-      calls.push(["trades", trades]);
-      return new Promise((resolve) => {
-        resolvers.trades = resolve;
+        calls.push(["resolve", resolve]);
       });
     },
   };
@@ -34,14 +27,13 @@ test("API 更新完成前必须等待订单与复盘都写入桌面数据库", a
   });
 
   await Promise.resolve();
-  assert.deepEqual(calls.map(([kind]) => kind), ["orders", "trades"]);
+  assert.deepEqual(calls.slice(0, 1), [["snapshot", {
+    orders: [{ orderId: "order-1" }],
+    trades: [{ id: "trade-1", openPosition: { quantity: 1 } }],
+  }]]);
   assert.equal(finished, false);
 
-  resolvers.orders();
-  await Promise.resolve();
-  assert.equal(finished, false);
-
-  resolvers.trades();
+  calls.find(([kind]) => kind === "resolve")?.[1]();
   await persistence;
   assert.equal(finished, true);
 });
@@ -53,6 +45,8 @@ test("Binance、OKX 与公开带单同步都会显式等待桌面快照保存", 
   );
 
   assert.match(component, /persistDesktopReplaySnapshot/);
+  assert.match(component, /skipNextOrderAutoSaveRef/);
+  assert.match(component, /skipNextTradeAutoSaveRef/);
   assert.match(component, /const handleBinanceApiSync = async/);
   assert.match(component, /const handleOkxApiSync = async/);
   assert.match(component, /const handlePublicLeadSync = useCallback\(async/);

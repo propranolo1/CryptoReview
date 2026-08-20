@@ -7,6 +7,9 @@ const HISTORY_RESULT_LIMIT = 1000;
 const MAX_HISTORY_REQUESTS_PER_WINDOW = 4096;
 const MAX_INCOME_PAGES = 4096;
 const MAX_RATE_LIMIT_RETRIES = 3;
+const HISTORY_CONCURRENCY = 4;
+const REQUEST_WEIGHT_BUDGET = 2200;
+const REQUEST_WEIGHT_INTERVAL_MS = 60_000;
 
 /** 按 Binance Futures USER_DATA 规则计算 HMAC-SHA256 查询签名。 */
 export function signBinanceQuery(query, apiSecret) {
@@ -181,6 +184,7 @@ export function createBinanceUsdmClient({
 } = {}) {
   if (typeof fetchImpl !== "function") throw new TypeError("Binance HTTP 客户端不可用");
   if (typeof sleep !== "function") throw new TypeError("Binance 限流等待器不可用");
+  const weightLimiter = createWeightLimiter({ now, sleep });
 
   async function getServerTime() {
     let response;
@@ -203,6 +207,7 @@ export function createBinanceUsdmClient({
 
   async function signedGet(pathname, params, credentials, clockOffset) {
     for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt += 1) {
+      await weightLimiter.acquire(binanceRequestWeight(pathname, params));
       // 每次重试都重新生成 timestamp 和签名，避免 Retry-After 超过 recvWindow 后签名失效。
       const query = new URLSearchParams();
       for (const [key, value] of Object.entries(params)) {
@@ -230,7 +235,7 @@ export function createBinanceUsdmClient({
         throw new Error("Binance Futures 私有接口连接失败");
       }
       if (response.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
-        await sleep(rateLimitDelay(response, attempt));
+        await weightLimiter.pause(rateLimitDelay(response, attempt));
         continue;
       }
       return parseResponse(response, "Binance Futures 私有接口请求失败");
@@ -333,10 +338,23 @@ export function createBinanceUsdmClient({
       return { accountAlias: accountAliases[0] };
     },
 
-    async syncOrders({ apiKey, apiSecret, accountId, symbols, startTime, endTime }) {
+    async syncOrders({
+      apiKey,
+      apiSecret,
+      accountId,
+      symbols,
+      knownActiveOrders,
+      startTime,
+      endTime,
+      onProgress,
+    }) {
       const credentials = validateCredentials({ apiKey, apiSecret });
       const seedSymbols = normalizeSymbols(symbols);
+      const activeOrders = normalizeKnownActiveOrders(knownActiveOrders);
+      for (const order of activeOrders) seedSymbols.push(order.symbol);
+      const uniqueSeedSymbols = [...new Set(seedSymbols)].sort();
       const range = normalizeHistoryRange(startTime, endTime, now());
+      emitProgress(onProgress, { stage: "discovery", message: "正在发现 Binance 交易对" });
       const serverTime = await getServerTime();
       const clockOffset = serverTime - normalizeTimestamp(now(), "本机时间");
       const normalizedOrders = [];
@@ -344,27 +362,14 @@ export function createBinanceUsdmClient({
 
       // 历史订单与逐笔成交接口必须传 symbol；先用无 symbol 的收益流水、当前持仓和全账户挂单发现交易对。
       // 全账户快照端点每次同步只调用一次，不能放进逐币对循环。
-      const incomeHistory = await signedIncomeHistoryGet(range, credentials, clockOffset);
-      const positionRisk = await signedGet(
-        "/fapi/v3/positionRisk",
-        {},
-        credentials,
-        clockOffset,
-      );
-      const openNormal = await signedGet(
-        "/fapi/v1/openOrders",
-        {},
-        credentials,
-        clockOffset,
-      );
-      const openAlgo = await signedGet(
-        "/fapi/v1/openAlgoOrders",
-        {},
-        credentials,
-        clockOffset,
-      );
+      const [incomeHistory, positionRisk, openNormal, openAlgo] = await Promise.all([
+        signedIncomeHistoryGet(range, credentials, clockOffset),
+        signedGet("/fapi/v3/positionRisk", {}, credentials, clockOffset),
+        signedGet("/fapi/v1/openOrders", {}, credentials, clockOffset),
+        signedGet("/fapi/v1/openAlgoOrders", {}, credentials, clockOffset),
+      ]);
       const normalizedSymbols = discoverSymbols({
-        seedSymbols,
+        seedSymbols: uniqueSeedSymbols,
         incomeHistory,
         positionRisk,
         openNormal,
@@ -400,6 +405,7 @@ export function createBinanceUsdmClient({
       pushNormalized(normalizedOrders, openNormal, (raw) => normalizeNormalOrder(raw, accountId));
       pushNormalized(normalizedOrders, openAlgo, (raw) => normalizeAlgoOrder(raw, accountId));
 
+      const historyTasks = [];
       for (const symbol of normalizedSymbols) {
         for (const window of splitHistoryRange(range.startTime, range.endTime)) {
           const requestParams = {
@@ -408,29 +414,68 @@ export function createBinanceUsdmClient({
             endTime: window.endTime,
             limit: 1000,
           };
-          const normalHistory = await signedHistoryGet(
-            "/fapi/v1/allOrders",
-            requestParams,
-            credentials,
-            clockOffset,
+          historyTasks.push(
+            async () => {
+              const payload = await signedHistoryGet(
+                "/fapi/v1/allOrders", requestParams, credentials, clockOffset,
+              );
+              pushNormalized(normalizedOrders, payload, (raw) => normalizeNormalOrder(raw, accountId));
+            },
+            async () => {
+              const payload = await signedHistoryGet(
+                "/fapi/v1/allAlgoOrders", requestParams, credentials, clockOffset,
+              );
+              pushNormalized(normalizedOrders, payload, (raw) => normalizeAlgoOrder(raw, accountId));
+            },
+            async () => {
+              const payload = await signedHistoryGet(
+                "/fapi/v1/userTrades", requestParams, credentials, clockOffset,
+              );
+              pushNormalized(normalizedFills, payload, (raw) => normalizeUserTrade(raw, accountId));
+            },
           );
-          const algoHistory = await signedHistoryGet(
-            "/fapi/v1/allAlgoOrders",
-            requestParams,
-            credentials,
-            clockOffset,
-          );
-          const userTrades = await signedHistoryGet(
-            "/fapi/v1/userTrades",
-            requestParams,
-            credentials,
-            clockOffset,
-          );
-          pushNormalized(normalizedOrders, normalHistory, (raw) => normalizeNormalOrder(raw, accountId));
-          pushNormalized(normalizedOrders, algoHistory, (raw) => normalizeAlgoOrder(raw, accountId));
-          pushNormalized(normalizedFills, userTrades, (raw) => normalizeUserTrade(raw, accountId));
         }
       }
+      await runTasksWithConcurrency(historyTasks, HISTORY_CONCURRENCY, (completed, total) => {
+        emitProgress(onProgress, {
+          stage: "history",
+          completed,
+          total,
+          message: `正在读取 Binance 历史 ${completed}/${total}`,
+        });
+      });
+
+      const activeOrderTasks = activeOrders.map((activeOrder) => async () => {
+        try {
+          if (activeOrder.kind === "algo") {
+            const payload = await signedGet(
+              "/fapi/v1/algoOrder",
+              { algoId: activeOrder.orderId },
+              credentials,
+              clockOffset,
+            );
+            normalizedOrders.push(normalizeAlgoOrder(payload, accountId));
+          } else {
+            const payload = await signedGet(
+              "/fapi/v1/order",
+              { symbol: activeOrder.symbol, orderId: activeOrder.orderId },
+              credentials,
+              clockOffset,
+            );
+            normalizedOrders.push(normalizeNormalOrder(payload, accountId));
+          }
+        } catch (error) {
+          if (error?.code !== -2011 && error?.code !== -2013) throw error;
+        }
+      });
+      await runTasksWithConcurrency(activeOrderTasks, HISTORY_CONCURRENCY, (completed, total) => {
+        emitProgress(onProgress, {
+          stage: "active-orders",
+          completed,
+          total,
+          message: `正在刷新活动订单 ${completed}/${total}`,
+        });
+      });
 
       const ordersByKey = new Map();
       for (const order of normalizedOrders) {
@@ -464,6 +509,7 @@ export function createBinanceUsdmClient({
           left.orderId.localeCompare(right.orderId),
         );
       const syncedAt = normalizeTimestamp(now(), "同步完成时间");
+      emitProgress(onProgress, { stage: "complete", message: "Binance 接口读取完成" });
       return {
         orders,
         symbols: normalizedSymbols,
@@ -597,7 +643,9 @@ async function parseResponse(response, fallbackMessage) {
     const upstreamMessage = payload && typeof payload.msg === "string"
       ? sanitizeUpstreamMessage(payload.msg)
       : "请检查 API Key、只读权限、IP 白名单或 Binance 访问限制";
-    throw new Error(`${fallbackMessage}：${upstreamMessage}`);
+    const error = new Error(`${fallbackMessage}：${upstreamMessage}`);
+    if (Number.isFinite(Number(payload?.code))) error.code = Number(payload.code);
+    throw error;
   }
   return payload;
 }
@@ -619,6 +667,109 @@ function rateLimitDelay(response, attempt) {
 
 function defaultSleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function binanceRequestWeight(pathname, params) {
+  if (pathname === "/fapi/v1/income") return 30;
+  if (pathname === "/fapi/v1/openOrders" || pathname === "/fapi/v1/openAlgoOrders") {
+    return params?.symbol ? 1 : 40;
+  }
+  if (pathname === "/fapi/v3/positionRisk" || pathname === "/fapi/v3/balance") return 5;
+  if (["/fapi/v1/allOrders", "/fapi/v1/allAlgoOrders", "/fapi/v1/userTrades"].includes(pathname)) {
+    return 5;
+  }
+  return 1;
+}
+
+function createWeightLimiter({ now, sleep }) {
+  const refillPerMillisecond = REQUEST_WEIGHT_BUDGET / REQUEST_WEIGHT_INTERVAL_MS;
+  let available = REQUEST_WEIGHT_BUDGET;
+  let updatedAt = Number(now());
+  let queue = Promise.resolve();
+
+  async function serialize(task) {
+    const previous = queue;
+    let release;
+    queue = new Promise((resolve) => { release = resolve; });
+    await previous;
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  }
+
+  return {
+    acquire(weight) {
+      return serialize(async () => {
+        const current = Math.max(updatedAt, Number(now()));
+        available = Math.min(
+          REQUEST_WEIGHT_BUDGET,
+          available + Math.max(0, current - updatedAt) * refillPerMillisecond,
+        );
+        updatedAt = current;
+        if (available < weight) {
+          const waitMilliseconds = Math.ceil((weight - available) / refillPerMillisecond);
+          await sleep(waitMilliseconds);
+          updatedAt += waitMilliseconds;
+          available = 0;
+          return;
+        }
+        available -= weight;
+      });
+    },
+    pause(milliseconds) {
+      return serialize(async () => {
+        await sleep(milliseconds);
+        updatedAt = Math.max(updatedAt, Number(now())) + milliseconds;
+        available = Math.min(available, REQUEST_WEIGHT_BUDGET / 4);
+      });
+    },
+  };
+}
+
+async function runTasksWithConcurrency(tasks, concurrency, onComplete) {
+  if (!Array.isArray(tasks) || tasks.length === 0) return [];
+  const results = new Array(tasks.length);
+  let nextIndex = 0;
+  let completed = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, tasks.length) },
+    async () => {
+      while (nextIndex < tasks.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await tasks[index]();
+        completed += 1;
+        onComplete?.(completed, tasks.length);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+function normalizeKnownActiveOrders(orders) {
+  if (orders === undefined || orders === null) return [];
+  if (!Array.isArray(orders)) throw new TypeError("Binance 活动订单必须是数组");
+  const normalized = new Map();
+  for (const order of orders) {
+    const symbol = normalizeSymbol(order?.symbol);
+    const orderId = requiredIdentifier(order?.orderId, "活动订单号");
+    const kind = order?.kind === "algo" ? "algo" : order?.kind === "normal" ? "normal" : null;
+    if (!kind) throw new TypeError("Binance 活动订单类型无效");
+    normalized.set(`${kind}\u0000${symbol}\u0000${orderId}`, { symbol, orderId, kind });
+  }
+  return [...normalized.values()];
+}
+
+function emitProgress(onProgress, progress) {
+  if (typeof onProgress !== "function") return;
+  try {
+    onProgress(progress);
+  } catch {
+    // 进度展示异常不能中断只读同步。
+  }
 }
 
 function validateRawOrder(raw, label) {

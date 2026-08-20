@@ -159,3 +159,71 @@ test("Binance 同步快照保存失败时不得标记同步成功", async () => 
   );
   assert.equal(markSyncedCalled, false);
 });
+
+test("Binance 快速更新使用增量范围并只补查当前账户活动订单", async () => {
+  const requestedStartTime = Date.parse("2026-07-01T00:00:00.000Z");
+  const lastSyncedAt = Date.parse("2026-07-20T12:00:00.000Z");
+  const endTime = Date.parse("2026-07-21T12:00:00.000Z");
+  let clientOptions;
+  const service = createBinanceApiService({
+    repository: {
+      loadState() {
+        return {
+          orders: [
+            {
+              userId: "account",
+              symbol: "BTCUSDT",
+              orderId: "100",
+              sourceKind: "api-normal",
+              status: "NEW",
+            },
+            {
+              userId: "other-account",
+              symbol: "STALEUSDT",
+              orderId: "200",
+              sourceKind: "api-normal",
+              status: "NEW",
+            },
+          ],
+        };
+      },
+      saveExchangeSyncSnapshot() {},
+    },
+    vault: {
+      getStatus() {
+        return { configured: true, lastSyncedAt };
+      },
+      read() {
+        return { accountId: "account", apiKey: "key", apiSecret: "secret" };
+      },
+      markSynced(syncedAt) {
+        return { configured: true, lastSyncedAt: syncedAt };
+      },
+    },
+    client: {
+      async syncOrders(options) {
+        clientOptions = options;
+        return {
+          orders: [],
+          openPositions: [],
+          symbols: [],
+          syncedAt: endTime,
+        };
+      },
+    },
+  });
+
+  const result = await service.syncOrders({
+    startTime: requestedStartTime,
+    endTime,
+    incremental: true,
+  });
+
+  assert.equal(clientOptions.startTime > requestedStartTime, true);
+  assert.deepEqual(clientOptions.knownActiveOrders, [
+    { symbol: "BTCUSDT", orderId: "100", kind: "normal" },
+  ]);
+  assert.equal(result.syncMode, "incremental");
+  assert.equal(result.requestedStartTime, requestedStartTime);
+  assert.equal(result.effectiveStartTime, clientOptions.startTime);
+});

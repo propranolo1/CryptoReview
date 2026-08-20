@@ -225,6 +225,31 @@ export function createDesktopRepository(databasePath) {
       });
     },
 
+    saveReplaySnapshot({ orders, trades }) {
+      ensureOpen(closed);
+      const orderRecords = prepareOrders(orders);
+      const tradeRecords = prepareTrades(trades);
+
+      runTransaction(database, () => {
+        let nextSortOrder = Number(selectNextOrder.get().next_sort_order);
+        for (const record of orderRecords) {
+          upsertOrder.run(
+            record.key,
+            record.order.userId,
+            record.order.symbol,
+            record.order.orderId,
+            nextSortOrder,
+            record.payload,
+          );
+          nextSortOrder += 1;
+        }
+        deleteTrades.run();
+        tradeRecords.forEach((record, sortOrder) => {
+          insertTrade.run(record.trade.id, sortOrder, record.payload);
+        });
+      });
+    },
+
     saveExchangeSyncSnapshot({
       provider,
       accountId,

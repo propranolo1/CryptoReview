@@ -526,3 +526,48 @@ test("OKX 游标分页使用 ordId、billId 与 algoId，服务端限流后重�
   assert.equal(cursors.some(([kind, cursor]) => kind === "algo" && cursor === "a001"), true);
   assert.equal(delays.length, 1);
 });
+
+test("OKX 独立端点使用有限并发、复用合约元数据并报告进度", async () => {
+  const now = 1784189000000;
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
+  let instrumentRequests = 0;
+  const progress = [];
+  const client = createOkxClient({
+    now: () => now,
+    sleep: async () => {},
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      if (url.pathname === "/api/v5/public/time") {
+        return Response.json({ code: "0", msg: "", data: [{ ts: String(now) }] });
+      }
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      await new Promise((resolve) => setTimeout(resolve, 4));
+      activeRequests -= 1;
+      if (url.pathname === "/api/v5/public/instruments") {
+        instrumentRequests += 1;
+        return Response.json({ code: "0", msg: "", data: [BTC_SWAP] });
+      }
+      return Response.json({ code: "0", msg: "", data: [] });
+    },
+  });
+  const input = {
+    apiKey: "synthetic-key",
+    apiSecret: "synthetic-secret",
+    passphrase: "synthetic-passphrase",
+    region: "global",
+    accountId: ACCOUNT_ID,
+    startTime: now - 86_400_000,
+    endTime: now,
+    onProgress: (value) => progress.push(value),
+  };
+
+  await client.syncOrders(input);
+  await client.syncOrders(input);
+
+  assert.equal(maxActiveRequests > 1, true);
+  assert.equal(maxActiveRequests <= 4, true);
+  assert.equal(instrumentRequests, 1);
+  assert.equal(progress.some((item) => item.stage === "complete"), true);
+});

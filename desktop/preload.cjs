@@ -41,6 +41,13 @@ contextBridge.exposeInMainWorld("cryptoReviewDesktop", Object.freeze({
     ipcRenderer.invoke("desktop:save-orders", requireArray(orders, "订单记录")),
   saveTrades: (trades) =>
     ipcRenderer.invoke("desktop:save-trades", requireArray(trades, "复盘记录")),
+  saveReplaySnapshot: (snapshot) => {
+    const value = requireRecord(snapshot, "复盘快照");
+    return ipcRenderer.invoke("desktop:save-replay-snapshot", {
+      orders: requireArray(value.orders, "订单记录"),
+      trades: requireArray(value.trades, "复盘记录"),
+    });
+  },
   saveTrainingResults: (results) =>
     ipcRenderer.invoke(
       "desktop:save-training-results",
@@ -77,6 +84,7 @@ contextBridge.exposeInMainWorld("cryptoReviewDesktop", Object.freeze({
       ),
       startTime: requireTimestamp(value.startTime, "同步开始时间"),
       endTime: requireTimestamp(value.endTime, "同步结束时间"),
+      incremental: Boolean(value.incremental),
     });
   },
   removeBinanceApi: () => ipcRenderer.invoke("desktop:binance-api-remove"),
@@ -95,7 +103,14 @@ contextBridge.exposeInMainWorld("cryptoReviewDesktop", Object.freeze({
     return ipcRenderer.invoke("desktop:okx-api-sync-orders", {
       startTime: requireTimestamp(value.startTime, "同步开始时间"),
       endTime: requireTimestamp(value.endTime, "同步结束时间"),
+      incremental: Boolean(value.incremental),
     });
+  },
+  onExchangeSyncProgress: (listener) => {
+    if (typeof listener !== "function") throw new TypeError("同步进度监听器必须是函数");
+    const wrapped = (_event, progress) => listener(progress);
+    ipcRenderer.on("desktop:exchange-sync-progress", wrapped);
+    return () => ipcRenderer.removeListener("desktop:exchange-sync-progress", wrapped);
   },
   removeOkxApi: () => ipcRenderer.invoke("desktop:okx-api-remove"),
   beginVideoExport: (options) => {
