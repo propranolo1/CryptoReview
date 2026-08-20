@@ -222,6 +222,13 @@ export interface DailyTrainingPerformance {
   losses: number;
 }
 
+export interface TrainingProfitPercentDistributionBin {
+  minPercent: number;
+  maxPercent: number;
+  centerPercent: number;
+  count: number;
+}
+
 export interface TrainingPerformanceResult {
   totalSessions: number;
   totalPnl: number;
@@ -231,6 +238,11 @@ export interface TrainingPerformanceResult {
   averageWin: number;
   averageLoss: number;
   averageProfitLossRatio: number | null;
+  profitPercentDistribution: TrainingProfitPercentDistributionBin[];
+  averageWinHoldingMs: number | null;
+  averageLossHoldingMs: number | null;
+  winHoldingSamples: number;
+  lossHoldingSamples: number;
   cumulativeCurve: TrainingPerformancePoint[];
   daily: DailyTrainingPerformance[];
 }

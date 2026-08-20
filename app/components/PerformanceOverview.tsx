@@ -8,6 +8,7 @@ import {
   calculateTradePerformance,
   getTradeCloseDateKey,
 } from "@/lib/performance.mjs";
+import { PerformanceDistributionCharts } from "./PerformanceDistributionCharts";
 import styles from "./PerformanceOverview.module.css";
 
 type PerformanceTrade = NormalizedTrade & {
@@ -629,6 +630,14 @@ export function PerformanceOverview({
           </div>
         </article>
       </div>
+
+      <PerformanceDistributionCharts
+        bins={performance.profitPercentDistribution}
+        averageWinHoldingMs={performance.averageWinHoldingMs}
+        averageLossHoldingMs={performance.averageLossHoldingMs}
+        winHoldingSamples={performance.winHoldingSamples}
+        lossHoldingSamples={performance.lossHoldingSamples}
+      />
 
       <article className={`${styles.chartCard} ${styles.calendarCard}`} aria-labelledby={calendarTitleId}>
         <div className={styles.chartHeading}>

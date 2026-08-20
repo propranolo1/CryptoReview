@@ -54,3 +54,23 @@ test("交易表现新增直接显示每日金额的盈利日历", async () => {
   assert.match(styles, /\.calendarDay/);
   assert.match(styles, /grid-template-columns:\s*repeat\(7,/);
 });
+
+test("真实交易与训练交易表现都展示损益分布曲线和盈亏持仓时间分布", async () => {
+  const [performance, training, distribution, styles] = await Promise.all([
+    readFile(new URL("../app/components/PerformanceOverview.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/TrainingMode.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/PerformanceDistributionCharts.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/PerformanceDistributionCharts.module.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(performance, /PerformanceDistributionCharts/);
+  assert.match(training, /PerformanceDistributionCharts/);
+  assert.match(distribution, /损益分布曲线/);
+  assert.match(distribution, /利润百分比/);
+  assert.match(distribution, /交易次数/);
+  assert.match(distribution, /持仓时间分布/);
+  assert.match(distribution, /盈利平均持仓时间/);
+  assert.match(distribution, /亏损平均持仓时间/);
+  assert.match(styles, /\.distributionCurve/);
+  assert.match(styles, /\.holdingBars/);
+});

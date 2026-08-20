@@ -1021,6 +1021,16 @@ test("多次训练统计总盈亏、胜率、平均盈亏比、累计曲线和 U
     averageWin: 10,
     averageLoss: -20,
     averageProfitLossRatio: 0.5,
+    profitPercentDistribution: [
+      { minPercent: -2, maxPercent: -1.25, centerPercent: -1.625, count: 1 },
+      { minPercent: -1.25, maxPercent: -0.5, centerPercent: -0.875, count: 0 },
+      { minPercent: -0.5, maxPercent: 0.25, centerPercent: -0.125, count: 1 },
+      { minPercent: 0.25, maxPercent: 1, centerPercent: 0.625, count: 1 },
+    ],
+    averageWinHoldingMs: null,
+    averageLossHoldingMs: null,
+    winHoldingSamples: 0,
+    lossHoldingSamples: 0,
     cumulativeCurve: [
       {
         sessionId: "win",
@@ -1049,4 +1059,46 @@ test("多次训练统计总盈亏、胜率、平均盈亏比、累计曲线和 U
       { date: "2026-07-17", pnl: -20, sessions: 2, wins: 0, losses: 1 },
     ],
   });
+});
+
+test("训练表现按利润百分比分箱，并分别统计盈利与亏损训练平均持仓时间", () => {
+  function finished({ id, exitPrice, holdingMs }) {
+    let current = session({ id, leverage: 1 });
+    current = act(current, {
+      type: "open",
+      side: "long",
+      price: 100,
+      margin: 100,
+    });
+    current = act(current, {
+      type: "close",
+      price: exitPrice,
+      time: "2026-07-16T08:02:00.000Z",
+    });
+    return {
+      ...finishTrainingSession(current, {
+        endedAt: "2026-07-16T08:03:00.000Z",
+      }),
+      summary: {
+        averageHoldingMs: holdingMs,
+        holdingCycleCount: 1,
+        direction: "long",
+      },
+    };
+  }
+
+  const performance = calculateTrainingPerformance([
+    finished({ id: "win-a", exitPrice: 110, holdingMs: 60 * 60 * 1_000 }),
+    finished({ id: "win-b", exitPrice: 120, holdingMs: 3 * 60 * 60 * 1_000 }),
+    finished({ id: "loss", exitPrice: 90, holdingMs: 4 * 60 * 60 * 1_000 }),
+  ]);
+
+  assert.equal(
+    performance.profitPercentDistribution.reduce((sum, bin) => sum + bin.count, 0),
+    3,
+  );
+  assert.equal(performance.averageWinHoldingMs, 2 * 60 * 60 * 1_000);
+  assert.equal(performance.averageLossHoldingMs, 4 * 60 * 60 * 1_000);
+  assert.equal(performance.winHoldingSamples, 2);
+  assert.equal(performance.lossHoldingSamples, 1);
 });

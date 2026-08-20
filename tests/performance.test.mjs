@@ -306,6 +306,16 @@ test("交易表现仅统计完全平仓交易，并按最终平仓时间升序�
       averageWin: 15.5,
       averageLoss: -20,
       profitLossRatio: 0.775,
+      profitPercentDistribution: [
+        { minPercent: -10, maxPercent: -4.25, centerPercent: -7.125, count: 1 },
+        { minPercent: -4.25, maxPercent: 1.5, centerPercent: -1.375, count: 1 },
+        { minPercent: 1.5, maxPercent: 7.25, centerPercent: 4.375, count: 0 },
+        { minPercent: 7.25, maxPercent: 13, centerPercent: 10.125, count: 2 },
+      ],
+      averageWinHoldingMs: null,
+      averageLossHoldingMs: null,
+      winHoldingSamples: 0,
+      lossHoldingSamples: 0,
     },
   );
 });
@@ -380,6 +390,57 @@ test("没有盈利或没有亏损时盈亏比为 null", () => {
   assert.equal(onlyLoss.averageWin, 0);
   assert.equal(onlyLoss.averageLoss, -10);
   assert.equal(onlyLoss.profitLossRatio, null);
+});
+
+test("交易表现按利润百分比分箱，并分别统计盈利与亏损交易平均持仓时间", () => {
+  const performance = calculateTradePerformance([
+    closedTrade({
+      id: "win-a",
+      entryTime: "2026-07-16T06:00:00.000Z",
+      exits: [{
+        quantity: 1,
+        exitPrice: 110,
+        exitTime: "2026-07-16T08:00:00.000Z",
+      }],
+    }),
+    closedTrade({
+      id: "win-b",
+      entryTime: "2026-07-16T05:00:00.000Z",
+      exits: [{
+        quantity: 1,
+        exitPrice: 120,
+        exitTime: "2026-07-16T08:00:00.000Z",
+      }],
+    }),
+    closedTrade({
+      id: "loss",
+      entryTime: "2026-07-16T04:00:00.000Z",
+      exits: [{
+        quantity: 1,
+        exitPrice: 90,
+        exitTime: "2026-07-16T08:00:00.000Z",
+      }],
+    }),
+    closedTrade({
+      id: "flat-without-entry-time",
+      exits: [{
+        quantity: 1,
+        exitPrice: 100,
+        exitTime: "2026-07-16T09:00:00.000Z",
+      }],
+    }),
+  ]);
+
+  assert.equal(
+    performance.profitPercentDistribution.reduce((sum, bin) => sum + bin.count, 0),
+    4,
+  );
+  assert.equal(performance.profitPercentDistribution[0].minPercent, -10);
+  assert.equal(performance.profitPercentDistribution.at(-1).maxPercent, 20);
+  assert.equal(performance.averageWinHoldingMs, 2.5 * 60 * 60 * 1_000);
+  assert.equal(performance.averageLossHoldingMs, 4 * 60 * 60 * 1_000);
+  assert.equal(performance.winHoldingSamples, 2);
+  assert.equal(performance.lossHoldingSamples, 1);
 });
 
 test("每日盈利日历按周一开头生成月份，并区分零盈利日与范围外日期", () => {

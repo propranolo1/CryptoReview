@@ -90,6 +90,7 @@ import {
   type TrainingSessionSummary,
 } from "@/lib/training-analytics.mjs";
 import { createReplayTimeframeAggregator } from "@/lib/video-timeframes.mjs";
+import { PerformanceDistributionCharts } from "./PerformanceDistributionCharts";
 import styles from "./TrainingMode.module.css";
 
 type TrainingView = "trade" | "performance";
@@ -2709,6 +2710,15 @@ function TrainingPerformanceBoard({
           <text x={padding.left - 8} y={padding.top + plotHeight} textAnchor="end">{formatMoney(minimum, true).replace(" USDT", "")}</text>
         </svg>
       </article>
+
+      <PerformanceDistributionCharts
+        bins={performance.profitPercentDistribution}
+        averageWinHoldingMs={performance.averageWinHoldingMs}
+        averageLossHoldingMs={performance.averageLossHoldingMs}
+        winHoldingSamples={performance.winHoldingSamples}
+        lossHoldingSamples={performance.lossHoldingSamples}
+        itemLabel="训练"
+      />
 
       <div className={styles.performanceBreakdown}>
         <article>

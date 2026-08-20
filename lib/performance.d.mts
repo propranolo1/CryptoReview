@@ -11,6 +11,8 @@ export interface PerformanceTrade {
   side: string;
   quantity: number | string;
   entryPrice: number | string;
+  entryTime?: string | number | Date | null;
+  entries?: Array<{ entryTime?: string | number | Date | null }>;
   fee?: number | string;
   exits?: PerformanceTradeExit[];
   exitPrice?: number | string | null;
@@ -42,6 +44,13 @@ export interface DailyTradePerformance {
   losses: number;
 }
 
+export interface ProfitPercentDistributionBin {
+  minPercent: number;
+  maxPercent: number;
+  centerPercent: number;
+  count: number;
+}
+
 export interface DailyPerformanceCalendarDay extends DailyTradePerformance {
   day: number;
   hasTrades: boolean;
@@ -68,7 +77,17 @@ export interface TradePerformanceResult {
   averageWin: number;
   averageLoss: number;
   profitLossRatio: number | null;
+  profitPercentDistribution: ProfitPercentDistributionBin[];
+  averageWinHoldingMs: number | null;
+  averageLossHoldingMs: number | null;
+  winHoldingSamples: number;
+  lossHoldingSamples: number;
 }
+
+export function buildProfitPercentDistribution(
+  values: readonly number[],
+  maximumBins?: number,
+): ProfitPercentDistributionBin[];
 
 export function getTradeCloseTime(
   trade: Partial<PerformanceTrade> | null | undefined,
