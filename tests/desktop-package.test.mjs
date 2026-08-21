@@ -25,6 +25,11 @@ test("桌面入口和打包脚本使用 Electron 43 与 Electron Forge", async (
   assert.match(mainSource, /window\.maximize\(\)/);
   assert.match(mainSource, /width:\s*1600/);
   assert.match(mainSource, /height:\s*1000/);
+  assert.match(
+    mainSource,
+    /session\.fromPartition\("cryptoreview-binance-smart-money"\)/,
+  );
+  assert.doesNotMatch(mainSource, /fromPartition\("persist:.*smart-money/i);
 });
 
 test("桌面打包同时提供 Windows Squirrel 与 macOS ZIP 产物", async () => {
@@ -225,6 +230,8 @@ test("preload 只暴露固定的桌面存储能力，不开放通用 IPC", async
   assert.match(preload, /ipcRenderer\.invoke\("desktop:okx-api-configure"/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:okx-api-sync-orders"/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:okx-api-remove"\)/);
+  assert.match(preload, /ipcRenderer\.invoke\("desktop:smart-money-authorize"/);
+  assert.match(preload, /ipcRenderer\.invoke\("desktop:smart-money-sync-latest-records"/);
   assert.match(preload, /onExchangeSyncProgress/);
   assert.match(preload, /desktop:exchange-sync-progress/);
   assert.match(preload, /ipcRenderer\.invoke\("desktop:video-export-begin"/);
@@ -234,9 +241,10 @@ test("preload 只暴露固定的桌面存储能力，不开放通用 IPC", async
   assert.match(preload, /requireVideoChunk/);
   assert.doesNotMatch(
     preload,
-    /getBinanceApiSecret|readBinanceCredentials|getOkxApiSecret|getOkxPassphrase|readOkxCredentials/,
+    /getBinanceApiSecret|readBinanceCredentials|getOkxApiSecret|getOkxPassphrase|readOkxCredentials|getSmartMoneyCookies/,
   );
   assert.doesNotMatch(preload, /ipcRenderer\.send/);
+  assert.doesNotMatch(preload, /cookie|sessionStorage|localStorage/i);
   assert.doesNotMatch(preload, /send:\s*ipcRenderer/);
 });
 

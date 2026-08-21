@@ -252,11 +252,21 @@ export function PerformanceOverview({
   const calendarTitleId = useId();
   const [curveTooltip, setCurveTooltip] = useState<ChartTooltip | null>(null);
   const [dailyTooltip, setDailyTooltip] = useState<ChartTooltip | null>(null);
+  const [calendarSelection, setCalendarSelection] = useState({
+    scope: "",
+    monthKey: null as string | null,
+  });
   const performance = useMemo(() => calculateTradePerformance(trades), [trades]);
   const calendarMonths = useMemo(
     () => buildDailyPerformanceCalendar(performance.daily),
     [performance.daily],
   );
+  const calendarScope = performance.daily
+    .map((day) => `${day.date}:${day.pnl}:${day.trades}`)
+    .join("|");
+  const calendarMonthKey = calendarSelection.scope === calendarScope
+    ? calendarSelection.monthKey
+    : null;
   const closeDateKeys = useMemo(() => {
     const dates = new Set<string>();
     for (const trade of trades) {
@@ -314,6 +324,23 @@ export function PerformanceOverview({
     0,
     ...performance.daily.map((item) => Math.max(0, -item.pnl)),
   );
+  const requestedCalendarIndex = calendarMonths.findIndex(
+    (month) => month.key === calendarMonthKey,
+  );
+  const selectedCalendarIndex = requestedCalendarIndex >= 0
+    ? requestedCalendarIndex
+    : calendarMonths.length - 1;
+  const selectedCalendarMonth = calendarMonths[selectedCalendarIndex];
+  const changeCalendarMonth = (offset: number) => {
+    const nextIndex = Math.min(
+      calendarMonths.length - 1,
+      Math.max(0, selectedCalendarIndex + offset),
+    );
+    setCalendarSelection({
+      scope: calendarScope,
+      monthKey: calendarMonths[nextIndex]?.key ?? null,
+    });
+  };
 
   return (
     <section className={styles.panel} aria-labelledby={titleId}>
@@ -645,15 +672,41 @@ export function PerformanceOverview({
             <strong id={calendarTitleId}>每日盈利日历</strong>
             <span>按最终平仓日期显示当日盈亏，金额单位为 USDT</span>
           </div>
-          <div className={styles.calendarLegend} aria-label="颜色说明">
-            <span><i className={styles.calendarLegendProfit} />盈利</span>
-            <span><i className={styles.calendarLegendLoss} />亏损</span>
+          <div className={styles.calendarHeadingActions}>
+            <div className={styles.calendarLegend} aria-label="颜色说明">
+              <span><i className={styles.calendarLegendProfit} />盈利</span>
+              <span><i className={styles.calendarLegendLoss} />亏损</span>
+            </div>
+            <div className={styles.calendarNavigation} aria-label="切换盈利日历月份">
+              <button
+                type="button"
+                onClick={() => changeCalendarMonth(-1)}
+                disabled={selectedCalendarIndex <= 0}
+                aria-label="上一个月"
+                title="上一个月"
+              >
+                ‹
+              </button>
+              <strong>{selectedCalendarMonth?.label ?? "—"}</strong>
+              <button
+                type="button"
+                onClick={() => changeCalendarMonth(1)}
+                disabled={selectedCalendarIndex >= calendarMonths.length - 1}
+                aria-label="下一个月"
+                title="下一个月"
+              >
+                ›
+              </button>
+            </div>
           </div>
         </div>
         <div className={styles.calendarMonths}>
-          {calendarMonths.map((month) => (
-            <section className={styles.calendarMonth} key={month.key} aria-label={month.label}>
-              <h3>{month.label}</h3>
+          {selectedCalendarMonth && (
+            <section
+              className={styles.calendarMonth}
+              key={selectedCalendarMonth.key}
+              aria-label={selectedCalendarMonth.label}
+            >
               <div className={styles.calendarWeekdays} aria-hidden="true">
                 {[
                   "一",
@@ -666,13 +719,13 @@ export function PerformanceOverview({
                 ].map((weekday) => <span key={weekday}>{weekday}</span>)}
               </div>
               <div className={styles.calendarGrid}>
-                {month.weeks.flatMap((week, weekIndex) =>
+                {selectedCalendarMonth.weeks.flatMap((week, weekIndex) =>
                   week.map((day, dayIndex) => {
                     if (!day) {
                       return (
                         <span
                           className={styles.calendarBlank}
-                          key={`${month.key}-empty-${weekIndex}-${dayIndex}`}
+                          key={`${selectedCalendarMonth.key}-empty-${weekIndex}-${dayIndex}`}
                           aria-hidden="true"
                         />
                       );
@@ -720,7 +773,7 @@ export function PerformanceOverview({
                 )}
               </div>
             </section>
-          ))}
+          )}
         </div>
       </article>
 

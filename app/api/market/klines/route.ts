@@ -54,8 +54,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "不支持的行情数据源。" }, { status: 400 });
   }
 
-  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
-    return NextResponse.json({ message: "K 线数量必须是 1 到 1000 的整数。" }, { status: 400 });
+  if (!Number.isInteger(limit) || limit < 1 || limit > 4000) {
+    return NextResponse.json({ message: "K 线数量必须是 1 到 4000 的整数。" }, { status: 400 });
   }
 
   if ((query.has("startTime") && !startTime) || (query.has("endTime") && !endTime)) {
@@ -66,45 +66,63 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "开始时间不能晚于结束时间。" }, { status: 400 });
   }
 
-  const endpoint = market === "binance-futures"
-    ? new URL(createBinanceFuturesKlineUrl({
-        symbol,
-        interval,
-        startTime,
-        endTime,
-        limit,
-      }))
-    : new URL("https://data-api.binance.vision/api/v3/klines");
-
-  if (market === "binance") {
-    endpoint.searchParams.set("symbol", symbol);
-    endpoint.searchParams.set("interval", interval);
-    endpoint.searchParams.set("limit", String(limit));
-    if (startTime) endpoint.searchParams.set("startTime", String(startTime));
-    if (endTime) endpoint.searchParams.set("endTime", String(endTime));
-  }
-
   try {
-    const response = await fetch(endpoint, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(10_000),
-    });
+    const allRows: unknown[] = [];
+    let remaining = limit;
+    let nextStartTime = startTime;
 
-    const payload = await response.json();
-    if (!response.ok || !Array.isArray(payload)) {
-      const upstreamMessage =
-        response.status === 451
-          ? `Binance ${market === "binance-futures" ? "Futures" : "Spot"} 官方接口因当前网络位置受限，无法读取历史 K 线`
-          : payload && typeof payload === "object" && "msg" in payload
-          ? String(payload.msg)
-          : "行情服务暂时不可用";
-      return NextResponse.json(
-        { message: upstreamMessage },
-        { status: response.status >= 400 ? response.status : 502 },
-      );
+    while (remaining > 0) {
+      const pageLimit = Math.min(1000, remaining);
+      const endpoint = market === "binance-futures"
+        ? new URL(createBinanceFuturesKlineUrl({
+            symbol,
+            interval,
+            startTime: nextStartTime,
+            endTime,
+            limit: pageLimit,
+          }))
+        : new URL("https://data-api.binance.vision/api/v3/klines");
+
+      if (market === "binance") {
+        endpoint.searchParams.set("symbol", symbol);
+        endpoint.searchParams.set("interval", interval);
+        endpoint.searchParams.set("limit", String(pageLimit));
+        if (nextStartTime) endpoint.searchParams.set("startTime", String(nextStartTime));
+        if (endTime) endpoint.searchParams.set("endTime", String(endTime));
+      }
+
+      const response = await fetch(endpoint, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const payload = await response.json();
+      if (!response.ok || !Array.isArray(payload)) {
+        const upstreamMessage =
+          response.status === 451
+            ? `Binance ${market === "binance-futures" ? "Futures" : "Spot"} 官方接口因当前网络位置受限，无法读取历史 K 线`
+            : payload && typeof payload === "object" && "msg" in payload
+              ? String(payload.msg)
+              : "行情服务暂时不可用";
+        return NextResponse.json(
+          { message: upstreamMessage },
+          { status: response.status >= 400 ? response.status : 502 },
+        );
+      }
+
+      allRows.push(...payload);
+      remaining -= payload.length;
+      if (payload.length < pageLimit || payload.length === 0 || !nextStartTime) break;
+
+      const lastRow = payload.at(-1);
+      const lastOpenTime = Array.isArray(lastRow) ? Number(lastRow[0]) : Number.NaN;
+      if (!Number.isSafeInteger(lastOpenTime)) break;
+      nextStartTime = lastOpenTime + 1;
+      if (endTime && nextStartTime > endTime) break;
     }
 
-    const candles = parseBinanceKlines(payload);
+    const candles = parseBinanceKlines(allRows)
+      .sort((left, right) => left.time - right.time)
+      .filter((candle, index, list) => index === 0 || candle.time !== list[index - 1].time);
     return NextResponse.json(
       {
         source: market === "binance-futures" ? "Binance Futures · USDⓈ-M 永续" : "Binance Spot",

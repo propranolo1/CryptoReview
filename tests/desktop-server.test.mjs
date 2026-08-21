@@ -248,6 +248,16 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
       return { canceled: true, exportId };
     },
   };
+  const smartMoneySessionService = {
+    authorize(options) {
+      calls.push(["smartMoneyAuthorize", options]);
+      return { completed: true };
+    },
+    syncLatestRecords(options) {
+      calls.push(["smartMoneySync", options]);
+      return { authorizationRequired: false, records: [] };
+    },
+  };
   const updateService = {
     getStatus() {
       calls.push(["updateStatus"]);
@@ -277,6 +287,7 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     repository,
     binanceApiService,
     okxApiService,
+    smartMoneySessionService,
     videoExportService,
     updateService,
     shell,
@@ -302,6 +313,8 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     "desktop:save-replay-snapshot",
     "desktop:save-trades",
     "desktop:save-training-results",
+    "desktop:smart-money-authorize",
+    "desktop:smart-money-sync-latest-records",
     "desktop:update-check",
     "desktop:update-install",
     "desktop:update-open-release",

@@ -55,6 +55,21 @@ test("交易表现新增直接显示每日金额的盈利日历", async () => {
   assert.match(styles, /grid-template-columns:\s*repeat\(7,/);
 });
 
+test("盈利日历默认显示最新月份，并可在右侧切换月份", async () => {
+  const [component, styles] = await Promise.all([
+    readFile(new URL("../app/components/PerformanceOverview.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/PerformanceOverview.module.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(component, /calendarMonthKey/);
+  assert.match(component, /calendarMonths\.length\s*-\s*1/);
+  assert.match(component, /aria-label="上一个月"/);
+  assert.match(component, /aria-label="下一个月"/);
+  assert.match(component, /selectedCalendarMonth/);
+  assert.doesNotMatch(component, /calendarMonths\.map\(\(month\)/);
+  assert.match(styles, /\.calendarNavigation/);
+});
+
 test("真实交易与训练交易表现都展示损益分布曲线和盈亏持仓时间分布", async () => {
   const [performance, training, distribution, styles] = await Promise.all([
     readFile(new URL("../app/components/PerformanceOverview.tsx", import.meta.url), "utf8"),

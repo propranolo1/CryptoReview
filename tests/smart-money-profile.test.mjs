@@ -46,8 +46,23 @@ test("公开主页资料会提取关联带单档案并生成独立复盘用户",
   assert.equal(profile.id, DEFAULT_SMART_MONEY_PROFILE_ID);
   assert.equal(profile.name, "不停梭- · 1万U不停梭挑战");
   assert.equal(profile.smartMoneySource.topTraderId, TOP_TRADER_ID);
+  assert.equal(profile.smartMoneySource.sharingLatestRecord, true);
   assert.equal(profile.copyTradeMonitor.portfolioId, LEAD_PORTFOLIO_ID);
   assert.equal(profile.copyTradeMonitor.enabled, true);
+});
+
+test("聪明钱最新操作记录授权能力会随用户配置持久化，但不会保存网页登录信息", () => {
+  const snapshot = normalizeSmartMoneyProfileSnapshot(createProfilePayload(), {
+    topTraderId: TOP_TRADER_ID,
+    fetchedAt: "2026-08-14T04:00:00.000Z",
+  });
+  const profile = createSmartMoneyTradeProfile([], snapshot);
+  const normalized = normalizeTradeProfiles([profile]).find(
+    (item) => item.id === DEFAULT_SMART_MONEY_PROFILE_ID,
+  );
+
+  assert.equal(normalized?.smartMoneySource?.sharingLatestRecord, true);
+  assert.doesNotMatch(JSON.stringify(normalized), /cookie|token|credential/i);
 });
 
 test("同一个聪明钱 URL 重复导入只更新原用户，不会创建重复档案", () => {

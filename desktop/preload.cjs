@@ -113,6 +113,19 @@ contextBridge.exposeInMainWorld("cryptoReviewDesktop", Object.freeze({
     return () => ipcRenderer.removeListener("desktop:exchange-sync-progress", wrapped);
   },
   removeOkxApi: () => ipcRenderer.invoke("desktop:okx-api-remove"),
+  authorizeSmartMoney: (options) => {
+    const value = requireRecord(options, "聪明钱登录参数");
+    return ipcRenderer.invoke("desktop:smart-money-authorize", {
+      sourceUrl: requireString(value.sourceUrl, "聪明钱主页链接"),
+      topTraderId: requireString(value.topTraderId, "聪明钱主页 ID"),
+    });
+  },
+  syncSmartMoneyLatestRecords: (options) => {
+    const value = requireRecord(options, "聪明钱同步参数");
+    return ipcRenderer.invoke("desktop:smart-money-sync-latest-records", {
+      topTraderId: requireString(value.topTraderId, "聪明钱主页 ID"),
+    });
+  },
   beginVideoExport: (options) => {
     const value = requireRecord(options, "视频导出参数");
     return ipcRenderer.invoke("desktop:video-export-begin", {

@@ -145,8 +145,10 @@ test("交易切换、平仓日期筛选与独立表现模块均保留回归锚�
   assert.match(component, /const chartBackground = "#ffffff"/);
   assert.match(component, /const candleColor = "#111111"/);
   assert.match(component, /downColor:\s*candleColor/);
-  assert.match(component, /EMA_WARMUP_CANDLES\s*=\s*280/);
+  assert.match(component, /EMA_WARMUP_CANDLES\s*=\s*1120/);
+  assert.match(component, /CHART_PRE_ENTRY_CANDLES\s*=\s*320/);
   assert.match(component, /entryMs - intervalMs \* EMA_WARMUP_CANDLES/);
+  assert.match(component, /limit:\s*"4000"/);
   assert.match(component, /ema21SeriesRef/);
   assert.match(component, /ema200SeriesRef/);
   assert.match(component, /ema21Series\?\.setData/);
@@ -178,6 +180,12 @@ test("交易切换、平仓日期筛选与独立表现模块均保留回归锚�
   assert.match(component, /nextEntryIndex - CHART_PRE_ENTRY_CANDLES/);
   assert.match(component, /rgba\(48, 196, 135, 0\.58\)/);
   assert.match(component, /rgba\(239, 101, 114, 0\.58\)/);
+  assert.match(component, /chartPreferences/);
+  assert.match(component, /indicatorPaneOrder/);
+  assert.match(component, /所在位置/);
+  assert.match(component, /createTextWatermark/);
+  assert.match(component, /自动适配价格比例/);
+  assert.match(component, /autoScale:\s*true/);
 
   assert.match(performance, /calculateTradePerformance/);
   assert.match(performance, /累计盈利曲线/);
@@ -193,6 +201,18 @@ test("交易切换、平仓日期筛选与独立表现模块均保留回归锚�
   assert.match(globals, /\.performance-workspace/);
   assert.match(globals, /\.replay-app\.theme-light/);
   assert.match(globals, /\.chart-area\s*\{[^}]*background:\s*#(?:fff|ffffff)/s);
+});
+
+test("行情接口支持按 Binance 单页上限分批获取四千根 K 线", async () => {
+  const route = await readFile(
+    new URL("../app/api/market/klines/route.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(route, /limit\s*>\s*4000/);
+  assert.match(route, /Math\.min\(1000,\s*remaining\)/);
+  assert.match(route, /nextStartTime/);
+  assert.match(route, /allRows/);
 });
 
 test("条件单截图在本机 OCR 校对后写入回放，并显示 TP/SL 与执行方式", async () => {

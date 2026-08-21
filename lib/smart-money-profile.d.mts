@@ -4,6 +4,7 @@ export interface SmartMoneySourceConfig {
   sourceUrl: string;
   topTraderId: string;
   leadPortfolioId: string;
+  sharingLatestRecord: boolean;
   traderName?: string;
   accountName?: string;
   lastResolvedAt?: string;

@@ -17,6 +17,9 @@ test("顶部提供复盘用户切换、新建和删除入口，导入只作用�
   assert.match(component, /deleteProfile\(activeProfile\.id\)/);
   assert.match(component, /removeRecordsForTradeProfile/);
   assert.match(component, /activeProfileId/);
+  assert.match(component, /resolveTradeProfileSelection\(profiles, activeProfileId\)/);
+  assert.match(component, /setActiveProfileId\(activeProfile\.id\)/);
+  assert.match(component, /key=\{profileSelectionKey\}/);
   assert.match(component, /filterRecordsByTradeProfile/);
   assert.match(component, /导入到：\{activeProfile\.name\}/);
   assert.match(component, /<FollowTradeImport/);

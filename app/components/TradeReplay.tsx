@@ -113,6 +113,7 @@ import {
 } from "@/lib/performance.mjs";
 import { persistDesktopReplaySnapshot } from "@/lib/replay-persistence.mjs";
 import {
+  DEFAULT_INDICATOR_PANE_ORDER,
   DEFAULT_TRADE_PROFILE_ID,
   assignTradeProfile,
   createTradeProfile,
@@ -121,7 +122,10 @@ import {
   normalizeTradeProfiles,
   removeRecordsForTradeProfile,
   removeTradeProfile,
+  resolveTradeProfileSelection,
+  type IndicatorPaneKey,
   type TradeProfile,
+  type TradeProfileChartPreferences,
 } from "@/lib/trade-profiles.mjs";
 import {
   extractSmartMoneyProfileId,
@@ -255,16 +259,25 @@ const DEFAULT_INDICATOR_VISIBILITY: IndicatorVisibility = {
 const INDICATOR_OPTIONS: Array<{
   key: keyof IndicatorVisibility;
   label: string;
+  paneKey?: IndicatorPaneKey;
 }> = [
-  { key: "xinMentorship", label: "XIN Mentorship" },
+  { key: "xinMentorship", label: "XIN Mentorship", paneKey: "xinMentorship" },
   { key: "ema21", label: "EMA21" },
   { key: "ema200", label: "EMA200" },
   { key: "volumeColoring", label: "成交量染色" },
-  { key: "volume", label: "成交量" },
-  { key: "openInterest", label: "OI" },
-  { key: "delta", label: "Delta" },
-  { key: "cvd", label: "CVD" },
+  { key: "volume", label: "成交量", paneKey: "volume" },
+  { key: "openInterest", label: "OI", paneKey: "openInterest" },
+  { key: "delta", label: "Delta", paneKey: "delta" },
+  { key: "cvd", label: "CVD", paneKey: "cvd" },
 ];
+
+const INDICATOR_PANE_LABELS: Record<IndicatorPaneKey, string> = {
+  xinMentorship: "XIN Mentorship",
+  volume: "成交量",
+  openInterest: "OI · 持仓量",
+  delta: "Delta",
+  cvd: "CVD",
+};
 
 const XIN_STATUS_LABELS = {
   unavailable: "预热中",
@@ -292,8 +305,8 @@ const FRAME_LABELS: Record<TimeFrame, string> = {
   "1d": "日线",
 };
 
-const EMA_WARMUP_CANDLES = 280;
-const CHART_PRE_ENTRY_CANDLES = 80;
+const EMA_WARMUP_CANDLES = 1120;
+const CHART_PRE_ENTRY_CANDLES = 320;
 const DEFAULT_VOLUME_COLORING_CONFIG: VolumeColoringConfig = {
   rvolPeriod: 20,
   lookback: 30,
@@ -304,6 +317,23 @@ const VOLUME_CANDLE_COLORS = {
   bearish: "#ff304f",
   low: "#ffd400",
 } as const;
+
+function resolveChartPreferences(
+  chartPreferences?: TradeProfileChartPreferences,
+): {
+  indicatorVisibility: IndicatorVisibility;
+  indicatorPaneOrder: IndicatorPaneKey[];
+} {
+  return {
+    indicatorVisibility: {
+      ...DEFAULT_INDICATOR_VISIBILITY,
+      ...(chartPreferences?.indicatorVisibility ?? {}),
+    },
+    indicatorPaneOrder: chartPreferences?.indicatorPaneOrder.length
+      ? [...chartPreferences.indicatorPaneOrder]
+      : [...DEFAULT_INDICATOR_PANE_ORDER],
+  };
+}
 
 const TRADES_STORAGE_KEY = "cryptoreview-trades-v1";
 const ORDER_HISTORY_STORAGE_KEY = "cryptoreview-binance-orders-v1";
@@ -745,8 +775,11 @@ function CandleReplayChart({
   entryIndex,
   trade,
   indicatorVisibility,
+  indicatorPaneOrder,
   volumeColoringConfig,
   orderFlowAvailable,
+  playing,
+  autoFitRequest,
   onSeekToTime,
 }: {
   candles: Candle[];
@@ -757,8 +790,11 @@ function CandleReplayChart({
   entryIndex: number;
   trade: ReplayTrade;
   indicatorVisibility: IndicatorVisibility;
+  indicatorPaneOrder: IndicatorPaneKey[];
   volumeColoringConfig: VolumeColoringConfig;
   orderFlowAvailable: boolean;
+  playing: boolean;
+  autoFitRequest: number;
   onSeekToTime: (timeMs: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -829,6 +865,7 @@ function CandleReplayChart({
           horzLine: { color: "rgba(17, 24, 39, 0.18)", labelBackgroundColor: "#475467" },
         },
         rightPriceScale: {
+          autoScale: true,
           borderColor: chartBorder,
           scaleMargins: { top: 0.12, bottom: 0.12 },
         },
@@ -892,14 +929,21 @@ function CandleReplayChart({
             crosshairMarkerVisible: false,
           }, 0)
         : null;
-      let nextPaneIndex = 1;
-      const xinPaneIndex = indicatorVisibility.xinMentorship
-        ? nextPaneIndex++
-        : null;
-      const volumePaneIndex = indicatorVisibility.volume ? nextPaneIndex++ : null;
-      const openInterestPaneIndex = showOpenInterest ? nextPaneIndex++ : null;
-      const deltaPaneIndex = indicatorVisibility.delta && showOrderFlow ? nextPaneIndex++ : null;
-      const cvdPaneIndex = indicatorVisibility.cvd && showOrderFlow ? nextPaneIndex++ : null;
+      const enabledPaneKeys = indicatorPaneOrder.filter((key) => {
+        if (key === "openInterest") return showOpenInterest;
+        if (key === "delta" || key === "cvd") {
+          return indicatorVisibility[key] && showOrderFlow;
+        }
+        return indicatorVisibility[key];
+      });
+      const paneIndexByIndicator = new Map<IndicatorPaneKey, number>(
+        enabledPaneKeys.map((key, index) => [key, index + 1]),
+      );
+      const xinPaneIndex = paneIndexByIndicator.get("xinMentorship") ?? null;
+      const volumePaneIndex = paneIndexByIndicator.get("volume") ?? null;
+      const openInterestPaneIndex = paneIndexByIndicator.get("openInterest") ?? null;
+      const deltaPaneIndex = paneIndexByIndicator.get("delta") ?? null;
+      const cvdPaneIndex = paneIndexByIndicator.get("cvd") ?? null;
       const xinMomentumSeries = xinPaneIndex === null
         ? null
         : chart.addSeries(library.HistogramSeries, {
@@ -1036,6 +1080,21 @@ function CandleReplayChart({
       if (openInterestPaneIndex !== null) panes[openInterestPaneIndex]?.setStretchFactor(1.15);
       if (deltaPaneIndex !== null) panes[deltaPaneIndex]?.setStretchFactor(1);
       if (cvdPaneIndex !== null) panes[cvdPaneIndex]?.setStretchFactor(1.15);
+      paneIndexByIndicator.forEach((paneIndex, key) => {
+        const pane = panes[paneIndex];
+        if (!pane) return;
+        library.createTextWatermark(pane, {
+          horzAlign: "left",
+          vertAlign: "top",
+          lines: [{
+            text: INDICATOR_PANE_LABELS[key],
+            color: "rgba(71, 84, 103, 0.78)",
+            fontSize: 11,
+            fontStyle: "normal",
+            fontFamily: "system-ui, sans-serif",
+          }],
+        });
+      });
 
       chartRef.current = chart;
       seriesRef.current = series;
@@ -1087,7 +1146,12 @@ function CandleReplayChart({
       dataKeyRef.current = "";
       openInterestDataKeyRef.current = "";
     };
-  }, [indicatorVisibility, showOpenInterest, showOrderFlow]);
+  }, [indicatorPaneOrder, indicatorVisibility, showOpenInterest, showOrderFlow]);
+
+  useEffect(() => {
+    if (!ready || autoFitRequest <= 0) return;
+    seriesRef.current?.priceScale().applyOptions({ autoScale: true });
+  }, [autoFitRequest, ready]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -1422,6 +1486,10 @@ function CandleReplayChart({
     markers.sort((a, b) => Number(a.time) - Number(b.time));
     markerApi.setMarkers(markers);
 
+    if (playing) {
+      series.priceScale().applyOptions({ autoScale: true });
+    }
+
     if (safeCursor <= entryIndex || previousCursor < 0) {
       chart.timeScale().fitContent();
     } else if (previousCursor !== safeCursor) {
@@ -1435,6 +1503,7 @@ function CandleReplayChart({
     entryIndex,
     indicatorVisibility.volumeColoring,
     openInterest,
+    playing,
     ready,
     trade,
     volumeColoringConfig,
@@ -1471,9 +1540,7 @@ export function TradeReplay() {
   const [entryIndex, setEntryIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const [indicatorVisibility, setIndicatorVisibility] = useState<IndicatorVisibility>(
-    DEFAULT_INDICATOR_VISIBILITY,
-  );
+  const [autoFitRequest, setAutoFitRequest] = useState(0);
   const [volumeColoringConfig, setVolumeColoringConfig] = useState<VolumeColoringConfig>(
     DEFAULT_VOLUME_COLORING_CONFIG,
   );
@@ -1518,9 +1585,20 @@ export function TradeReplay() {
     tradesRef.current = trades;
   }, [trades]);
 
-  const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ??
-    profiles[0] ??
-    normalizeTradeProfiles([])[0];
+  const activeProfile = useMemo(
+    () => resolveTradeProfileSelection(profiles, activeProfileId),
+    [activeProfileId, profiles],
+  );
+  const profileSelectionKey = useMemo(
+    () => profiles.map((profile) => profile.id).join("\u0000"),
+    [profiles],
+  );
+  const activeChartPreferences = useMemo(
+    () => resolveChartPreferences(activeProfile.chartPreferences),
+    [activeProfile.chartPreferences],
+  );
+  const indicatorVisibility = activeChartPreferences.indicatorVisibility;
+  const indicatorPaneOrder = activeChartPreferences.indicatorPaneOrder;
   const activeProfileCanDelete = !isProtectedTradeProfile(activeProfile.id);
   const activeProfileTrades = useMemo(
     () => filterRecordsByTradeProfile<ReplayTrade>(trades, activeProfile.id),
@@ -1559,6 +1637,11 @@ export function TradeReplay() {
   const cursor = replayFrame.cursor;
   const candlePhase = replayFrame.phase;
   const replayMarketDataKey = buildReplayMarketDataKey(trade, frame);
+
+  useEffect(() => {
+    if (activeProfileId === activeProfile.id) return;
+    setActiveProfileId(activeProfile.id);
+  }, [activeProfile.id, activeProfileId]);
 
   useEffect(() => {
     const dialog = profileDialogRef.current;
@@ -1884,7 +1967,7 @@ export function TradeReplay() {
       interval: frame,
       startTime: String(startTime),
       endTime: String(endTime),
-      limit: "1000",
+      limit: "4000",
     });
     if (trade.marketDataSource) {
       params.set("market", trade.marketDataSource);
@@ -2187,6 +2270,7 @@ export function TradeReplay() {
   const indicatorVisibilityKey = INDICATOR_OPTIONS
     .map((item) => `${item.key}:${indicatorVisibility[item.key] ? 1 : 0}`)
     .join(",");
+  const indicatorPaneOrderKey = indicatorPaneOrder.join(",");
   const currentAverageEntryPrice = replaySnapshot.averageEntryPrice;
   const visibleExits = replaySnapshot.visibleExits;
   const latestVisibleEntry = replaySnapshot.visibleEntries.at(-1);
@@ -2218,6 +2302,48 @@ export function TradeReplay() {
     setSelectedDate(date);
     const firstTrade = filterTradesByCloseDate(archiveTrades, date)[0];
     if (firstTrade) selectTrade(firstTrade.id);
+  };
+
+  const updateActiveChartPreferences = (
+    update: (
+      current: ReturnType<typeof resolveChartPreferences>,
+    ) => TradeProfileChartPreferences,
+  ) => {
+    setProfiles((current) => normalizeTradeProfiles(current.map((profile) => {
+      if (profile.id !== activeProfile.id) return profile;
+      return {
+        ...profile,
+        chartPreferences: update(resolveChartPreferences(profile.chartPreferences)),
+      };
+    })));
+  };
+
+  const updateIndicatorVisibility = (
+    key: keyof IndicatorVisibility,
+    visible: boolean,
+  ) => {
+    updateActiveChartPreferences((current) => ({
+      indicatorVisibility: {
+        ...current.indicatorVisibility,
+        [key]: visible,
+      },
+      indicatorPaneOrder: current.indicatorPaneOrder,
+    }));
+  };
+
+  const moveIndicatorPane = (key: IndicatorPaneKey, targetIndex: number) => {
+    updateActiveChartPreferences((current) => {
+      const nextOrder = current.indicatorPaneOrder.filter((item) => item !== key);
+      nextOrder.splice(
+        Math.min(Math.max(0, targetIndex), nextOrder.length),
+        0,
+        key,
+      );
+      return {
+        indicatorVisibility: current.indicatorVisibility,
+        indicatorPaneOrder: nextOrder,
+      };
+    });
   };
 
   const selectTradeProfile = (profileId: string) => {
@@ -2564,41 +2690,88 @@ export function TradeReplay() {
   const handlePublicLeadSync = useCallback(async (
     targetProfile: TradeProfile,
     config: CopyTradeMonitorConfig,
-    options: { fullHistory?: boolean; silent?: boolean } = {},
+    options: {
+      fullHistory?: boolean;
+      silent?: boolean;
+      authorizeSmartMoney?: boolean;
+    } = {},
   ) => {
     const syncKey = `${targetProfile.id}\u0000${config.portfolioId}`;
     if (publicLeadSyncingRef.current.has(syncKey)) return;
     publicLeadSyncingRef.current.add(syncKey);
     const attemptedAt = new Date().toISOString();
+    const desktopApi = window.cryptoReviewDesktop;
+    const smartMoneySource =
+      targetProfile.smartMoneySource?.leadPortfolioId === config.portfolioId
+        ? targetProfile.smartMoneySource
+        : null;
+    let usingSmartMoneyLatestRecords = false;
 
     try {
-      const response = await fetch("/api/copy-trade/lead-portfolio", {
-        method: "POST",
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let payload: Record<string, unknown> | null = null;
+      if (
+        smartMoneySource?.sharingLatestRecord &&
+        desktopApi?.syncSmartMoneyLatestRecords
+      ) {
+        let latestResult = await desktopApi.syncSmartMoneyLatestRecords({
+          topTraderId: smartMoneySource.topTraderId,
+        });
+        if (latestResult.authorizationRequired && options.authorizeSmartMoney) {
+          setImportNotice(
+            "请在弹出的 Binance 窗口完成登录，回到聪明钱主页后关闭窗口，软件会继续同步。",
+          );
+          await desktopApi.authorizeSmartMoney({
+            sourceUrl: smartMoneySource.sourceUrl,
+            topTraderId: smartMoneySource.topTraderId,
+          });
+          latestResult = await desktopApi.syncSmartMoneyLatestRecords({
+            topTraderId: smartMoneySource.topTraderId,
+          });
+        }
+        if (latestResult.authorizationRequired) {
+          throw new Error(
+            options.authorizeSmartMoney
+              ? "Binance 登录未完成，暂时无法读取该主页的最新操作记录。"
+              : latestResult.message,
+          );
+        }
+        usingSmartMoneyLatestRecords = true;
+        payload = {
           portfolioId: config.portfolioId,
-          fullHistory: options.fullHistory === true,
-        }),
-      });
-      const payload = await response.json().catch(() => null) as
-        | Record<string, unknown>
-        | null;
-      if (!response.ok || !payload) {
-        throw new Error(
-          typeof payload?.message === "string"
-            ? payload.message
-            : "Binance 公开带单同步失败，请稍后重试。",
-        );
+          fetchedAt: latestResult.fetchedAt,
+          nickname: smartMoneySource.traderName ?? config.nickname,
+          positions: [],
+          orderHistory: {
+            total: latestResult.total,
+            list: latestResult.records,
+          },
+          warnings: latestResult.warnings,
+        };
+      } else {
+        const response = await fetch("/api/copy-trade/lead-portfolio", {
+          method: "POST",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            portfolioId: config.portfolioId,
+            fullHistory: options.fullHistory === true,
+          }),
+        });
+        payload = await response.json().catch(() => null) as
+          | Record<string, unknown>
+          | null;
+        if (!response.ok || !payload) {
+          throw new Error(
+            typeof payload?.message === "string"
+              ? payload.message
+              : "Binance 公开带单同步失败，请稍后重试。",
+          );
+        }
       }
 
       const snapshot = normalizePublicLeadSnapshot(payload, {
         portfolioId: config.portfolioId,
       });
-      const smartMoneySource =
-        targetProfile.smartMoneySource?.leadPortfolioId === config.portfolioId
-          ? targetProfile.smartMoneySource
-          : null;
       const sourceOptions = smartMoneySource
         ? {
             source: "smart-money-public" as const,
@@ -2617,7 +2790,6 @@ export function TradeReplay() {
         profileName: targetProfile.name,
         ...sourceOptions,
       });
-      const desktopApi = window.cryptoReviewDesktop;
       const mergedOrders = mergeIntoOrderArchive(incomingOrders, {
         skipAutoSave: Boolean(desktopApi),
       });
@@ -2630,6 +2802,7 @@ export function TradeReplay() {
       ).filter((order) => order.userId === publicAccountId);
       const hasCompleteSmartMoneyOrderArchive = Boolean(
         smartMoneySource &&
+        !usingSmartMoneyLatestRecords &&
         snapshot.totalOrders > 0 &&
         publicOrders.length === snapshot.totalOrders,
       );
@@ -2692,7 +2865,7 @@ export function TradeReplay() {
           (trade) => trade.exitTime === null,
         ).length;
         setImportNotice(
-          `已将 ${snapshot.nickname ?? "该交易员"}的 ${incomingOrders.length}/${snapshot.totalOrders} 条${smartMoneySource ? "聪明钱关联公开成交" : "公开成交"}同步到“${targetProfile.name}”，生成 ${reconstruction.trades.length} 笔复盘，当前 ${smartMoneySource ? reconstructedOpenCount : openPositions.length} 个未平仓仓位。${changesText}${warningText}公开记录不含手续费。`,
+          `已将 ${snapshot.nickname ?? "该交易员"}的 ${incomingOrders.length}/${snapshot.totalOrders} 条${usingSmartMoneyLatestRecords ? "聪明钱最新操作" : smartMoneySource ? "聪明钱关联公开成交" : "公开成交"}同步到“${targetProfile.name}”，生成 ${reconstruction.trades.length} 笔复盘，当前 ${smartMoneySource ? reconstructedOpenCount : openPositions.length} 个未平仓仓位。${changesText}${warningText}${usingSmartMoneyLatestRecords ? "最新操作仅覆盖最近 30 天，且不含手续费。" : "公开记录不含手续费。"}`,
         );
       }
     } catch (error) {
@@ -2745,6 +2918,7 @@ export function TradeReplay() {
       setPlaying(false);
       await handlePublicLeadSync(targetProfile, targetProfile.copyTradeMonitor, {
         fullHistory: true,
+        authorizeSmartMoney: snapshot.sharingLatestRecord,
       });
     } catch (error) {
       const message = error instanceof Error
@@ -2822,6 +2996,7 @@ export function TradeReplay() {
             <Users size={14} />
             <span>复盘用户</span>
             <select
+              key={profileSelectionKey}
               value={activeProfile.id}
               onChange={(event) => selectTradeProfile(event.target.value)}
               aria-label="选择复盘用户"
@@ -2921,6 +3096,7 @@ export function TradeReplay() {
                 onSave={(config) => savePublicLeadConfig(activeProfile.id, config)}
                 onSync={(config, options) =>
                   handlePublicLeadSync(activeProfile, config, options)}
+                onSmartMoneyImport={handleSmartMoneyImport}
                 disabled={!hydrated || persistenceMode === "loading"}
               />
               <SmartMoneyImport
@@ -3129,6 +3305,15 @@ export function TradeReplay() {
                 <em>{formatPercent(pnl.returnRatePercent, true)}</em>
               </div>
               <div className="chart-toolbar-actions">
+                <button
+                  type="button"
+                  className="auto-scale-button"
+                  onClick={() => setAutoFitRequest((current) => current + 1)}
+                  aria-label="自动适配价格比例"
+                  title="自动适配价格比例"
+                >
+                  A
+                </button>
                 <ReplayVideoExport
                   trade={trade}
                   frame={frame}
@@ -3152,19 +3337,36 @@ export function TradeReplay() {
                         ? openInterest.length === 0
                         : (item.key === "delta" || item.key === "cvd") && !orderFlowAvailable;
                       return (
-                        <label key={item.key} className={unavailable ? "disabled" : ""}>
-                          <input
-                            type="checkbox"
-                            checked={indicatorVisibility[item.key]}
-                            disabled={unavailable}
-                            onChange={(event) => setIndicatorVisibility((current) => ({
-                              ...current,
-                              [item.key]: event.target.checked,
-                            }))}
-                          />
-                          <span>{item.label}</span>
-                          {unavailable && <small>无数据</small>}
-                        </label>
+                        <div className="indicator-picker-item" key={item.key}>
+                          <label className={unavailable ? "disabled" : ""}>
+                            <input
+                              type="checkbox"
+                              checked={indicatorVisibility[item.key]}
+                              disabled={unavailable}
+                              onChange={(event) => updateIndicatorVisibility(
+                                item.key,
+                                event.target.checked,
+                              )}
+                            />
+                            <span>{item.label}</span>
+                            {unavailable && <small>无数据</small>}
+                          </label>
+                          {item.paneKey && (
+                            <select
+                              value={indicatorPaneOrder.indexOf(item.paneKey)}
+                              onChange={(event) => moveIndicatorPane(
+                                item.paneKey!,
+                                Number(event.target.value),
+                              )}
+                              aria-label={`${item.label}所在位置`}
+                              title={`${item.label}所在位置`}
+                            >
+                              {indicatorPaneOrder.map((_, index) => (
+                                <option value={index} key={index}>副图 {index + 1}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
                       );
                     })}
                     <div
@@ -3338,7 +3540,7 @@ export function TradeReplay() {
 
             <div className="chart-area">
               <CandleReplayChart
-                key={`${trade.id}:${frame}:${indicatorVisibilityKey}:${openInterest.length > 0 ? "oi" : "no-oi"}:${orderFlowAvailable ? "flow" : "no-flow"}`}
+                key={`${trade.id}:${frame}:${indicatorVisibilityKey}:${indicatorPaneOrderKey}:${openInterest.length > 0 ? "oi" : "no-oi"}:${orderFlowAvailable ? "flow" : "no-flow"}`}
                 candles={candles}
                 openInterest={openInterest}
                 cursor={cursor}
@@ -3347,8 +3549,11 @@ export function TradeReplay() {
                 entryIndex={entryIndex}
                 trade={trade}
                 indicatorVisibility={indicatorVisibility}
+                indicatorPaneOrder={indicatorPaneOrder}
                 volumeColoringConfig={volumeColoringConfig}
                 orderFlowAvailable={orderFlowAvailable}
+                playing={playing}
+                autoFitRequest={autoFitRequest}
                 onSeekToTime={seekReplayToTime}
               />
               {loading && <div className="chart-loading"><span />正在载入历史行情</div>}

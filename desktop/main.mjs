@@ -6,6 +6,7 @@ import { startLocalServer } from "./local-server.mjs";
 import { handleSquirrelStartup } from "./squirrel-startup.mjs";
 import { createUpdateService } from "./update-service.mjs";
 import { createVideoExportService } from "./video-export-service.mjs";
+import { createSmartMoneySessionService } from "./smart-money-session.mjs";
 
 const PRELOAD_PATH = fileURLToPath(new URL("./preload.cjs", import.meta.url));
 const IPC_CHANNELS = [
@@ -29,6 +30,8 @@ const IPC_CHANNELS = [
   "desktop:okx-api-configure",
   "desktop:okx-api-sync-orders",
   "desktop:okx-api-remove",
+  "desktop:smart-money-authorize",
+  "desktop:smart-money-sync-latest-records",
   "desktop:video-export-begin",
   "desktop:video-export-append",
   "desktop:video-export-complete",
@@ -67,6 +70,7 @@ export function registerDesktopIpc({
   repository,
   binanceApiService,
   okxApiService,
+  smartMoneySessionService,
   videoExportService,
   updateService,
   shell,
@@ -188,6 +192,14 @@ export function registerDesktopIpc({
     trustedHandler(() => okxApiService.remove()),
   );
   ipcMain.handle(
+    "desktop:smart-money-authorize",
+    trustedHandler((options) => smartMoneySessionService.authorize(options)),
+  );
+  ipcMain.handle(
+    "desktop:smart-money-sync-latest-records",
+    trustedHandler((options) => smartMoneySessionService.syncLatestRecords(options)),
+  );
+  ipcMain.handle(
     "desktop:video-export-begin",
     trustedHandler((options) => videoExportService.begin(options)),
   );
@@ -273,6 +285,7 @@ export async function bootstrapDesktopApp(electron) {
     ipcMain,
     net,
     safeStorage,
+    session,
     shell,
   } = electron;
   await app.whenReady();
@@ -322,6 +335,10 @@ export async function bootstrapDesktopApp(electron) {
     autoUpdater,
     fetchImpl: (input, init) => net.fetch(input, init),
   });
+  const smartMoneySessionService = createSmartMoneySessionService({
+    BrowserWindow,
+    browserSession: session.fromPartition("cryptoreview-binance-smart-money"),
+  });
   let localServer;
   try {
     localServer = await startLocalServer({
@@ -329,6 +346,7 @@ export async function bootstrapDesktopApp(electron) {
       fetchImpl: (input, init) => net.fetch(input, init),
     });
   } catch (error) {
+    await smartMoneySessionService.dispose();
     await Promise.resolve(repository.close());
     throw error;
   }
@@ -337,6 +355,7 @@ export async function bootstrapDesktopApp(electron) {
     repository,
     binanceApiService,
     okxApiService,
+    smartMoneySessionService,
     videoExportService,
     updateService,
     shell,
@@ -358,6 +377,7 @@ export async function bootstrapDesktopApp(electron) {
       Promise.resolve().then(() => unregisterIpc()),
       videoExportService.dispose(),
       Promise.resolve().then(() => updateService.dispose()),
+      smartMoneySessionService.dispose(),
       Promise.resolve().then(() => repository.close()),
       localServer.close(),
     ]);

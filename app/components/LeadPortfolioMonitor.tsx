@@ -11,6 +11,7 @@ import {
   extractLeadPortfolioId,
   type CopyTradeMonitorConfig,
 } from "@/lib/copy-trade-monitor.mjs";
+import { extractSmartMoneyProfileId } from "@/lib/smart-money-profile.mjs";
 import type { TradeProfile } from "@/lib/trade-profiles.mjs";
 import styles from "./LeadPortfolioMonitor.module.css";
 
@@ -22,6 +23,7 @@ type LeadPortfolioMonitorProps = {
     config: CopyTradeMonitorConfig,
     options?: { fullHistory?: boolean },
   ) => void | Promise<void>;
+  onSmartMoneyImport: (sourceUrl: string) => void | Promise<void>;
 };
 
 export function LeadPortfolioMonitor({
@@ -29,6 +31,7 @@ export function LeadPortfolioMonitor({
   disabled = false,
   onSave,
   onSync,
+  onSmartMoneyImport,
 }: LeadPortfolioMonitorProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -98,6 +101,9 @@ export function LeadPortfolioMonitor({
 
   const saveOnly = () => {
     try {
+      if (isSmartMoneyProfileUrl(sourceUrl)) {
+        throw new Error("聪明钱主页需要点击“立即同步”，并在弹出的 Binance 窗口完成登录。");
+      }
       const config = buildConfig();
       onSave(config);
       setError("");
@@ -108,9 +114,14 @@ export function LeadPortfolioMonitor({
 
   const syncNow = async () => {
     try {
-      const config = buildConfig();
       setSyncing(true);
       setError("");
+      if (isSmartMoneyProfileUrl(sourceUrl)) {
+        extractSmartMoneyProfileId(sourceUrl);
+        await onSmartMoneyImport(sourceUrl.trim());
+        return;
+      }
+      const config = buildConfig();
       onSave(config);
       await onSync(config, { fullHistory: true });
     } catch (syncError) {
@@ -163,9 +174,9 @@ export function LeadPortfolioMonitor({
           <header>
             <div>
               <span className={styles.eyebrow}>PUBLIC COPY TRADING</span>
-              <h2 id={titleId}>Binance 公开带单主页</h2>
+              <h2 id={titleId}>Binance 带单与聪明钱主页</h2>
               <p id={descriptionId}>
-                读取公开成交与当前仓位，自动同步到“小洪”这类独立复盘用户。
+                公开带单直接同步；聪明钱主页会创建独立用户并读取最近操作记录。
               </p>
             </div>
             <button
@@ -186,18 +197,18 @@ export function LeadPortfolioMonitor({
             </div>
 
             <label className={styles.field}>
-              <span><Link2 size={13} />公开主页链接</span>
+              <span><Link2 size={13} />Binance 主页链接</span>
               <input
                 value={sourceUrl}
                 onChange={(event) => {
                   setSourceUrl(event.target.value);
                   setError("");
                 }}
-                placeholder="https://www.binance.com/zh-CN/copy-trading/lead-details/..."
+                placeholder="https://www.binance.com/zh-CN/smart-money/profile/..."
                 spellCheck={false}
                 autoComplete="off"
               />
-              <small>粘贴带单员公开主页链接，不需要对方账户 API Key。</small>
+              <small>支持公开带单或聪明钱主页；聪明钱记录需要登录 Binance 网页授权。</small>
             </label>
 
             <div className={styles.settingsRow}>
@@ -282,6 +293,10 @@ export function LeadPortfolioMonitor({
       </dialog>
     </>
   );
+}
+
+function isSmartMoneyProfileUrl(value: string) {
+  return /\/smart-money\/profile\//i.test(value);
 }
 
 function formatLocalTime(value: string) {

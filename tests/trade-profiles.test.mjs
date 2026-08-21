@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   BINANCE_SMART_MONEY_PROFILE_ID,
+  DEFAULT_INDICATOR_PANE_ORDER,
   DEFAULT_TRADE_PROFILE_ID,
   XIAOHONG_TRADE_PROFILE_ID,
   createTradeProfile,
@@ -12,6 +13,7 @@ import {
   normalizeTradeProfiles,
   removeRecordsForTradeProfile,
   removeTradeProfile,
+  resolveTradeProfileSelection,
 } from "../lib/trade-profiles.mjs";
 
 test("旧记录自动归入我的账户，并预置小洪用户", () => {
@@ -87,4 +89,47 @@ test("可删除新建用户及其记录，但不能删除内置用户", () => {
     () => removeTradeProfile(withCustom, XIAOHONG_TRADE_PROFILE_ID),
     /内置用户不能删除/,
   );
+});
+
+test("删除当前用户后会修复失效选择，并且仍可继续切换其他用户", () => {
+  const profiles = normalizeTradeProfiles([]);
+  const custom = createTradeProfile(profiles, "待删除用户", 1_785_427_200_000);
+  const nextProfiles = removeTradeProfile([...profiles, custom], custom.id);
+
+  assert.equal(
+    resolveTradeProfileSelection(nextProfiles, custom.id).id,
+    DEFAULT_TRADE_PROFILE_ID,
+  );
+  assert.equal(
+    resolveTradeProfileSelection(nextProfiles, XIAOHONG_TRADE_PROFILE_ID).id,
+    XIAOHONG_TRADE_PROFILE_ID,
+  );
+});
+
+test("图表指标显示和副图位置会按复盘用户规范化并持久化", () => {
+  const [profile] = normalizeTradeProfiles([{
+    id: DEFAULT_TRADE_PROFILE_ID,
+    name: "我的账户",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    chartPreferences: {
+      indicatorVisibility: {
+        ema21: false,
+        volume: false,
+        invalidIndicator: true,
+      },
+      indicatorPaneOrder: ["cvd", "volume", "cvd", "invalidPane"],
+    },
+  }]);
+
+  assert.deepEqual(profile.chartPreferences, {
+    indicatorVisibility: {
+      ema21: false,
+      volume: false,
+    },
+    indicatorPaneOrder: [
+      "cvd",
+      "volume",
+      ...DEFAULT_INDICATOR_PANE_ORDER.filter((key) => key !== "cvd" && key !== "volume"),
+    ],
+  });
 });

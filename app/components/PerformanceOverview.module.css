@@ -350,9 +350,52 @@
   background: var(--loss);
 }
 
+.calendarHeadingActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.calendarNavigation {
+  min-width: 150px;
+  display: grid;
+  grid-template-columns: 28px minmax(78px, 1fr) 28px;
+  align-items: center;
+  gap: 5px;
+}
+
+.calendarNavigation strong {
+  color: var(--text);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.calendarNavigation button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: var(--control-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.calendarNavigation button:hover:not(:disabled) {
+  border-color: var(--control-border-hover);
+  background: var(--control-hover);
+}
+
+.calendarNavigation button:disabled {
+  color: var(--muted-2);
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .calendarMonths {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   margin-top: 10px;
 }
@@ -608,6 +651,16 @@
     padding-right: 8px;
     padding-bottom: 10px;
     padding-left: 8px;
+  }
+
+  .calendarCard .chartHeading {
+    flex-direction: column;
+  }
+
+  .calendarHeadingActions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
   }
 
   .calendarMonth {

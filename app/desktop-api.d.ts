@@ -189,6 +189,33 @@ declare global {
     total?: number;
   }
 
+  interface SmartMoneyLatestRecord {
+    symbol: string;
+    side: "BUY" | "SELL";
+    positionSide: "BOTH" | "LONG" | "SHORT";
+    avgPrice: number;
+    executedQty: number;
+    executedQuoteQty: number;
+    updateTime: number;
+  }
+
+  type SmartMoneyLatestRecordsResult =
+    | {
+        authorizationRequired: true;
+        message: string;
+      }
+    | {
+        authorizationRequired: false;
+        marketType: "UM";
+        startTime: number;
+        endTime: number;
+        fetchedAt: string;
+        records: SmartMoneyLatestRecord[];
+        total: number;
+        truncated: boolean;
+        warnings: string[];
+      };
+
   interface VideoExportBeginResult {
     canceled: boolean;
     exportId?: string;
@@ -253,6 +280,13 @@ declare global {
       listener: (progress: ExchangeSyncProgress) => void,
     ): () => void;
     removeOkxApi(): Promise<OkxApiStatus>;
+    authorizeSmartMoney(options: {
+      sourceUrl: string;
+      topTraderId: string;
+    }): Promise<{ completed: true }>;
+    syncSmartMoneyLatestRecords(options: {
+      topTraderId: string;
+    }): Promise<SmartMoneyLatestRecordsResult>;
     beginVideoExport(options: {
       suggestedName: string;
       mimeType: string;
