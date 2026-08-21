@@ -43,6 +43,20 @@ test("顶部右侧操作区保留固有宽度，不覆盖交易表现切换按�
   assert.doesNotMatch(actions, /min-width:\s*0/);
 });
 
+test("交易侧栏可以点击收起并从折叠按钮恢复", async () => {
+  const [component, styles] = await Promise.all([
+    readFile(new URL("app/components/TradeReplay.tsx", projectUrl), "utf8"),
+    readFile(new URL("app/globals.css", projectUrl), "utf8"),
+  ]);
+
+  assert.match(component, /tradeSidebarCollapsed/);
+  assert.match(component, /aria-label="隐藏交易侧栏"/);
+  assert.match(component, /aria-label="显示交易侧栏"/);
+  assert.match(component, /onContextMenu=\{\(event\) => void deleteTradeRecord\(event, item\)\}/);
+  assert.match(styles, /\.workspace\.trade-sidebar-collapsed/);
+  assert.match(styles, /\.trade-sidebar\.collapsed/);
+});
+
 test("训练模式加入后窄屏主切换使用三列，顶部不再保留冗余状态文字", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 

@@ -176,7 +176,7 @@ export function LeadPortfolioMonitor({
               <span className={styles.eyebrow}>PUBLIC COPY TRADING</span>
               <h2 id={titleId}>Binance 带单与聪明钱主页</h2>
               <p id={descriptionId}>
-                公开带单直接同步；聪明钱主页会创建独立用户并读取最近操作记录。
+                两类主页都会创建独立用户；聪明钱主页还会读取最近操作记录。
               </p>
             </div>
             <button
@@ -191,9 +191,9 @@ export function LeadPortfolioMonitor({
 
           <section className={styles.content}>
             <div className={styles.targetCard}>
-              <span>同步目标</span>
-              <strong>同步到“{profile.name}”</strong>
-              <small>成交、复盘和表现统计不会写入其他用户。</small>
+              <span>保存方式</span>
+              <strong>自动创建或更新独立复盘用户</strong>
+              <small>同一主页重复同步只会更新对应用户，不会写入“我的账户”。</small>
             </div>
 
             <label className={styles.field}>

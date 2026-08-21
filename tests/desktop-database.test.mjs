@@ -526,3 +526,18 @@ test("订单与复盘快照在同一事务中保存并完整恢复", () => {
     temporary.cleanup();
   }
 });
+
+test("订单与复盘快照会替换已删除的原始订单", () => {
+  const repository = createDesktopRepository(":memory:");
+  const retained = createOrder({ orderId: "retained-order" });
+  const removed = createOrder({ orderId: "removed-order" });
+
+  try {
+    repository.saveOrders([retained, removed]);
+    repository.saveReplaySnapshot({ orders: [retained], trades: [] });
+
+    assert.deepEqual(repository.loadState().orders, [retained]);
+  } finally {
+    repository.close();
+  }
+});

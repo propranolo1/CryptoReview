@@ -489,6 +489,10 @@ body:has(.replay-app.theme-light) {
   gap: 14px;
 }
 
+.workspace.trade-sidebar-collapsed {
+  grid-template-columns: 42px minmax(0, 1fr);
+}
+
 .performance-workspace {
   width: 100%;
   max-width: 1500px;
@@ -673,11 +677,51 @@ body:has(.replay-app.theme-light) {
   overflow: hidden;
 }
 
+.trade-sidebar.collapsed {
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  padding: 4px;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
 .sidebar-heading {
   padding: 2px 6px 14px;
   display: flex;
   justify-content: space-between;
   align-items: end;
+}
+
+.sidebar-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sidebar-collapse-button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel-raised);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.sidebar-collapse-button:hover {
+  border-color: rgba(244, 184, 96, 0.42);
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.sidebar-collapse-button:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
 }
 
 .eyebrow {
@@ -2316,6 +2360,10 @@ body:has(.replay-app.theme-light) {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
     padding: 12px;
+  }
+
+  .workspace.trade-sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .trade-sidebar,

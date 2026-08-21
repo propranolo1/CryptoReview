@@ -14,9 +14,10 @@ test("导入菜单提供公开带单主页同步，并支持手动与自动更�
   assert.match(monitor, /Binance 带单与聪明钱主页/);
   assert.match(monitor, /立即同步/);
   assert.match(monitor, /自动更新/);
-  assert.match(monitor, /同步到“\{profile\.name\}”/);
+  assert.match(monitor, /自动创建或更新独立复盘用户/);
   assert.match(monitor, /extractSmartMoneyProfileId/);
   assert.match(monitor, /onSmartMoneyImport/);
+  assert.match(replay, /upsertPublicLeadTradeProfile/);
 });
 
 test("本地接口固定代理 Binance 公开带单数据并完整分页", async () => {

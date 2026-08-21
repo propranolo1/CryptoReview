@@ -117,6 +117,7 @@ export function createDesktopRepository(databasePath) {
       order_id = excluded.order_id,
       payload = excluded.payload
   `);
+  const deleteOrders = database.prepare("DELETE FROM imported_orders");
   const deleteTrades = database.prepare("DELETE FROM replay_trades");
   const insertTrade = database.prepare(
     "INSERT INTO replay_trades (id, sort_order, payload) VALUES (?, ?, ?)",
@@ -231,18 +232,17 @@ export function createDesktopRepository(databasePath) {
       const tradeRecords = prepareTrades(trades);
 
       runTransaction(database, () => {
-        let nextSortOrder = Number(selectNextOrder.get().next_sort_order);
-        for (const record of orderRecords) {
+        deleteOrders.run();
+        orderRecords.forEach((record, sortOrder) => {
           upsertOrder.run(
             record.key,
             record.order.userId,
             record.order.symbol,
             record.order.orderId,
-            nextSortOrder,
+            sortOrder,
             record.payload,
           );
-          nextSortOrder += 1;
-        }
+        });
         deleteTrades.run();
         tradeRecords.forEach((record, sortOrder) => {
           insertTrade.run(record.trade.id, sortOrder, record.payload);

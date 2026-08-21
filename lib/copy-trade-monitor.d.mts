@@ -2,6 +2,7 @@ import type {
   BinanceOpenPosition,
   BinanceUsdmOrder,
 } from "./binance-orders.mjs";
+import type { TradeProfile } from "./trade-profiles.mjs";
 
 export type CopyTradeMonitorInterval = 30 | 60 | 300;
 
@@ -70,6 +71,21 @@ export function extractLeadPortfolioId(input: unknown): string;
 export function normalizeCopyTradeMonitorConfig(
   value: unknown,
 ): CopyTradeMonitorConfig | null;
+export function copyTradeProfileId(input: unknown): string;
+export function createPublicLeadTradeProfile(
+  existingProfiles: unknown,
+  config: unknown,
+  options?: { nickname?: string | null; now?: number },
+): TradeProfile;
+export function upsertPublicLeadTradeProfile(
+  existingProfiles: unknown,
+  config: unknown,
+  options?: { nickname?: string | null; now?: number },
+): {
+  profiles: TradeProfile[];
+  profile: TradeProfile;
+  created: boolean;
+};
 export function normalizePublicLeadSnapshot(
   input: unknown,
   options?: { portfolioId?: string; fetchedAt?: string | number },

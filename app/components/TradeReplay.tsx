@@ -11,6 +11,8 @@ import {
   Gauge,
   GraduationCap,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pause,
   Play,
   UserPlus,
@@ -33,6 +35,7 @@ import {
   useState,
   type ChangeEvent,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import type {
   CandlestickData,
@@ -87,11 +90,13 @@ import {
   type ReplaySyncSource,
 } from "@/lib/binance-orders.mjs";
 import {
+  copyTradeProfileId,
   createPublicLeadOpenPositions,
   createPublicLeadOrderRecords,
   createStoredPublicLeadSnapshot,
   diffPublicLeadSnapshots,
   normalizePublicLeadSnapshot,
+  upsertPublicLeadTradeProfile,
   type CopyTradeMonitorConfig,
   type PublicLeadPositionChange,
 } from "@/lib/copy-trade-monitor.mjs";
@@ -111,7 +116,10 @@ import {
   getTradeCloseTime,
   groupTradesByCloseDate,
 } from "@/lib/performance.mjs";
-import { persistDesktopReplaySnapshot } from "@/lib/replay-persistence.mjs";
+import {
+  persistDesktopReplaySnapshot,
+  removeReplayTradeRecord,
+} from "@/lib/replay-persistence.mjs";
 import {
   DEFAULT_INDICATOR_PANE_ORDER,
   DEFAULT_TRADE_PROFILE_ID,
@@ -1528,6 +1536,8 @@ export function TradeReplay() {
   const [profileNameDraft, setProfileNameDraft] = useState("");
   const [profileCreateError, setProfileCreateError] = useState("");
   const [profileDeleting, setProfileDeleting] = useState(false);
+  const [deletingTradeId, setDeletingTradeId] = useState<string | null>(null);
+  const [tradeSidebarCollapsed, setTradeSidebarCollapsed] = useState(false);
   const [trainingResults, setTrainingResults] = useState<TrainingResultRecord[]>([]);
   const [selectedId, setSelectedId] = useState(DEFAULT_TRADES[0].id);
   const [activeModule, setActiveModule] = useState<ActiveModule>("replay");
@@ -1556,6 +1566,7 @@ export function TradeReplay() {
   const profileDialogRef = useRef<HTMLDialogElement>(null);
   const orderArchiveRef = useRef<BinanceOrderRecord[]>([]);
   const tradesRef = useRef<ReplayTrade[]>(DEFAULT_TRADES);
+  const profilesRef = useRef<TradeProfile[]>(normalizeTradeProfiles([]));
   const skipNextOrderAutoSaveRef = useRef<BinanceOrderRecord[] | null>(null);
   const skipNextTradeAutoSaveRef = useRef<ReplayTrade[] | null>(null);
   const publicLeadSyncingRef = useRef<Set<string>>(new Set());
@@ -1584,6 +1595,10 @@ export function TradeReplay() {
   useEffect(() => {
     tradesRef.current = trades;
   }, [trades]);
+
+  useEffect(() => {
+    profilesRef.current = profiles;
+  }, [profiles]);
 
   const activeProfile = useMemo(
     () => resolveTradeProfileSelection(profiles, activeProfileId),
@@ -2425,6 +2440,74 @@ export function TradeReplay() {
     }
   };
 
+  const deleteTradeRecord = async (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    targetTrade: ReplayTrade,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (deletingTradeId) return;
+    if (!targetTrade.id.startsWith("import-")) {
+      setImportNotice("内置示例记录不能删除；右键可删除导入或同步生成的订单复盘。");
+      return;
+    }
+    const confirmed = window.confirm(
+      `确定删除 ${displaySymbol(targetTrade.symbol)} 的这条复盘记录吗？关联的专属原始订单也会从本机删除，且无法恢复。`,
+    );
+    if (!confirmed) return;
+
+    setDeletingTradeId(targetTrade.id);
+    try {
+      const removal = removeReplayTradeRecord(
+        orderArchiveRef.current,
+        tradesRef.current,
+        targetTrade.id,
+      ) as {
+        orders: BinanceOrderRecord[];
+        trades: ReplayTrade[];
+        removedOrderCount: number;
+      };
+      const desktopApi = window.cryptoReviewDesktop;
+      if (persistenceMode === "desktop") {
+        if (!desktopApi) throw new Error("桌面删除接口不可用");
+        await persistDesktopReplaySnapshot(desktopApi, removal);
+        skipNextOrderAutoSaveRef.current = removal.orders;
+        skipNextTradeAutoSaveRef.current = removal.trades;
+      }
+
+      orderArchiveRef.current = removal.orders;
+      tradesRef.current = removal.trades;
+      setOrderArchive(removal.orders);
+      setTrades(removal.trades);
+      setSelectedDate(null);
+      setPlaying(false);
+
+      if (selectedId === targetTrade.id) {
+        const remainingProfileTrades = filterRecordsByTradeProfile<ReplayTrade>(
+          removal.trades,
+          activeProfile.id,
+        );
+        const remainingImported = remainingProfileTrades.filter(
+          (item) => item.id.startsWith("import-"),
+        );
+        const nextVisible = remainingImported.length > 0
+          ? remainingImported
+          : activeProfile.id === DEFAULT_TRADE_PROFILE_ID
+            ? remainingProfileTrades
+            : [];
+        setSelectedId(nextVisible[0]?.id ?? DEFAULT_TRADES[0].id);
+      }
+
+      setImportNotice(
+        `已删除 ${displaySymbol(targetTrade.symbol)} 复盘及 ${removal.removedOrderCount} 条关联原始订单。`,
+      );
+    } catch (error) {
+      setImportNotice(error instanceof Error ? error.message : "删除订单记录失败。");
+    } finally {
+      setDeletingTradeId(null);
+    }
+  };
+
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -2678,13 +2761,18 @@ export function TradeReplay() {
     profileId: string,
     config: CopyTradeMonitorConfig | null,
   ) => {
-    setProfiles((current) => normalizeTradeProfiles(current.map((profile) => {
-      if (profile.id !== profileId) return profile;
-      const { copyTradeMonitor: _copyTradeMonitor, ...baseProfile } = profile;
-      return config
-        ? { ...baseProfile, copyTradeMonitor: config }
-        : baseProfile;
-    })));
+    setProfiles((current) => {
+      const nextProfiles = normalizeTradeProfiles(current.map((profile) => {
+        if (profile.id !== profileId) return profile;
+        const baseProfile = { ...profile };
+        delete baseProfile.copyTradeMonitor;
+        return config
+          ? { ...baseProfile, copyTradeMonitor: config }
+          : baseProfile;
+      }));
+      profilesRef.current = nextProfiles;
+      return nextProfiles;
+    });
   }, []);
 
   const handlePublicLeadSync = useCallback(async (
@@ -2705,6 +2793,7 @@ export function TradeReplay() {
       targetProfile.smartMoneySource?.leadPortfolioId === config.portfolioId
         ? targetProfile.smartMoneySource
         : null;
+    let syncProfile = targetProfile;
     let usingSmartMoneyLatestRecords = false;
 
     try {
@@ -2772,6 +2861,35 @@ export function TradeReplay() {
       const snapshot = normalizePublicLeadSnapshot(payload, {
         portfolioId: config.portfolioId,
       });
+      if (!smartMoneySource) {
+        const baseProfiles = profilesRef.current.some(
+          (profile) => profile.id === targetProfile.id,
+        )
+          ? profilesRef.current
+          : [...profilesRef.current, targetProfile];
+        const withoutLegacyBinding = baseProfiles.map((profile) => {
+          if (
+            profile.id === targetProfile.id &&
+            profile.id !== copyTradeProfileId(config.portfolioId)
+          ) {
+            const baseProfile = { ...profile };
+            delete baseProfile.copyTradeMonitor;
+            return baseProfile;
+          }
+          return profile;
+        });
+        const upserted = upsertPublicLeadTradeProfile(
+          withoutLegacyBinding,
+          config,
+          { nickname: snapshot.nickname },
+        );
+        const nextProfiles = normalizeTradeProfiles(upserted.profiles);
+        syncProfile = nextProfiles.find(
+          (profile) => profile.id === upserted.profile.id,
+        ) ?? upserted.profile;
+        profilesRef.current = nextProfiles;
+        setProfiles(nextProfiles);
+      }
       const sourceOptions = smartMoneySource
         ? {
             source: "smart-money-public" as const,
@@ -2780,14 +2898,14 @@ export function TradeReplay() {
         : {};
       const incomingOrders = createPublicLeadOrderRecords(snapshot, {
         portfolioId: config.portfolioId,
-        profileId: targetProfile.id,
-        profileName: targetProfile.name,
+        profileId: syncProfile.id,
+        profileName: syncProfile.name,
         ...sourceOptions,
       }) as BinanceOrderRecord[];
       const openPositions = createPublicLeadOpenPositions(snapshot, {
         portfolioId: config.portfolioId,
-        profileId: targetProfile.id,
-        profileName: targetProfile.name,
+        profileId: syncProfile.id,
+        profileName: syncProfile.name,
         ...sourceOptions,
       });
       const mergedOrders = mergeIntoOrderArchive(incomingOrders, {
@@ -2798,7 +2916,7 @@ export function TradeReplay() {
         : `copy-public:${config.portfolioId}`;
       const publicOrders = filterRecordsByTradeProfile<BinanceOrderRecord>(
         mergedOrders,
-        targetProfile.id,
+        syncProfile.id,
       ).filter((order) => order.userId === publicAccountId);
       const hasCompleteSmartMoneyOrderArchive = Boolean(
         smartMoneySource &&
@@ -2828,7 +2946,7 @@ export function TradeReplay() {
         (latest, order) => Math.max(latest, order.orderUpdateTime),
         config.lastOrderTime ?? 0,
       );
-      savePublicLeadConfig(targetProfile.id, {
+      savePublicLeadConfig(syncProfile.id, {
         ...config,
         nickname: snapshot.nickname ?? config.nickname,
         lastAttemptAt: snapshot.fetchedAt,
@@ -2842,7 +2960,7 @@ export function TradeReplay() {
         if (reconstruction.trades[0]) {
           setSelectedId(reconstruction.trades[0].id);
         }
-        setActiveProfileId(targetProfile.id);
+        setActiveProfileId(syncProfile.id);
         setSelectedDate(null);
         setActiveModule("replay");
         setPlaying(false);
@@ -2865,14 +2983,14 @@ export function TradeReplay() {
           (trade) => trade.exitTime === null,
         ).length;
         setImportNotice(
-          `已将 ${snapshot.nickname ?? "该交易员"}的 ${incomingOrders.length}/${snapshot.totalOrders} 条${usingSmartMoneyLatestRecords ? "聪明钱最新操作" : smartMoneySource ? "聪明钱关联公开成交" : "公开成交"}同步到“${targetProfile.name}”，生成 ${reconstruction.trades.length} 笔复盘，当前 ${smartMoneySource ? reconstructedOpenCount : openPositions.length} 个未平仓仓位。${changesText}${warningText}${usingSmartMoneyLatestRecords ? "最新操作仅覆盖最近 30 天，且不含手续费。" : "公开记录不含手续费。"}`,
+          `已将 ${snapshot.nickname ?? "该交易员"}的 ${incomingOrders.length}/${snapshot.totalOrders} 条${usingSmartMoneyLatestRecords ? "聪明钱最新操作" : smartMoneySource ? "聪明钱关联公开成交" : "公开成交"}同步到独立用户“${syncProfile.name}”，生成 ${reconstruction.trades.length} 笔复盘，当前 ${smartMoneySource ? reconstructedOpenCount : openPositions.length} 个未平仓仓位。${changesText}${warningText}${usingSmartMoneyLatestRecords ? "最新操作仅覆盖最近 30 天，且不含手续费。" : "公开记录不含手续费。"}`,
         );
       }
     } catch (error) {
       const message = error instanceof Error
         ? error.message
         : "Binance 公开带单同步失败，请稍后重试。";
-      savePublicLeadConfig(targetProfile.id, {
+      savePublicLeadConfig(syncProfile.id, {
         ...config,
         lastAttemptAt: attemptedAt,
         lastError: message,
@@ -3151,7 +3269,11 @@ export function TradeReplay() {
       </dialog>
 
       {activeModule === "replay" ? (
-      <div id="replay-module" className="workspace" aria-label="交易回放模块">
+      <div
+        id="replay-module"
+        className={`workspace ${tradeSidebarCollapsed ? "trade-sidebar-collapsed" : ""}`}
+        aria-label="交易回放模块"
+      >
         {archiveTrades.length === 0 ? (
           <section className="profile-empty-workspace">
             <Users size={30} />
@@ -3170,13 +3292,36 @@ export function TradeReplay() {
           </section>
         ) : (
         <>
-        <aside className="trade-sidebar">
+        <aside className={`trade-sidebar ${tradeSidebarCollapsed ? "collapsed" : ""}`}>
+          {tradeSidebarCollapsed ? (
+            <button
+              type="button"
+              className="sidebar-collapse-button"
+              onClick={() => setTradeSidebarCollapsed(false)}
+              aria-label="显示交易侧栏"
+              title="显示交易侧栏"
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+          ) : (
+          <>
           <div className="sidebar-heading">
             <div>
               <span className="eyebrow">交易档案</span>
               <h2>{activeProfile.name}的复盘</h2>
             </div>
-            <span className="count-badge">{filteredTrades.length}</span>
+            <div className="sidebar-heading-actions">
+              <span className="count-badge">{filteredTrades.length}</span>
+              <button
+                type="button"
+                className="sidebar-collapse-button"
+                onClick={() => setTradeSidebarCollapsed(true)}
+                aria-label="隐藏交易侧栏"
+                title="隐藏交易侧栏"
+              >
+                <PanelLeftClose size={15} />
+              </button>
+            </div>
           </div>
           <div className="date-filter" role="group" aria-label="按最终平仓日期筛选">
             <button
@@ -3209,8 +3354,11 @@ export function TradeReplay() {
                   key={item.id}
                   className={`trade-list-item ${item.id === trade.id ? "active" : ""}`}
                   onClick={() => selectTrade(item.id)}
+                  onContextMenu={(event) => void deleteTradeRecord(event, item)}
                   role="listitem"
                   aria-current={item.id === trade.id ? "true" : undefined}
+                  aria-busy={deletingTradeId === item.id}
+                  title={item.id.startsWith("import-") ? "右键删除这条复盘记录" : "内置示例记录不可删除"}
                 >
                   <div className="trade-list-top">
                     <span className="asset-avatar">{normalizeSymbol(item.symbol).slice(0, 1)}</span>
@@ -3254,6 +3402,8 @@ export function TradeReplay() {
               <span>导入 CSV 自动重建并保存在本机</span>
             </div>
           </div>
+          </>
+          )}
         </aside>
 
         <section className="replay-stage">

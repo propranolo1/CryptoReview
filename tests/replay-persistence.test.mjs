@@ -50,9 +50,10 @@ test("Binance、OKX 与公开带单同步都会显式等待桌面快照保存", 
   assert.match(component, /const handleBinanceApiSync = async/);
   assert.match(component, /const handleOkxApiSync = async/);
   assert.match(component, /const handlePublicLeadSync = useCallback\(async/);
+  assert.match(component, /const deleteTradeRecord = async/);
   assert.equal(
     component.match(/await persistDesktopReplaySnapshot\(/g)?.length,
-    3,
+    4,
   );
   assert.equal(
     component.match(
@@ -77,5 +78,45 @@ test("桌面冷启动使用数据库中的当前仓位快照重建未平仓复�
   assert.match(
     component,
     /reconstructReplayableBinanceOrders\(\s*restoredOrders,\s*\{\s*openPositions:\s*restoredOpenPositions/,
+  );
+});
+
+test("删除单条复盘时只移除该复盘专属的原始订单", async () => {
+  const { removeReplayTradeRecord } = await import(
+    "../lib/replay-persistence.mjs"
+  );
+  const profileId = "profile-copy-trade-4844930989142068736";
+  const orders = [
+    { profileId, symbol: "BTCUSDT", orderId: "entry-1" },
+    { profileId, symbol: "BTCUSDT", orderId: "exit-1" },
+    { profileId, symbol: "BTCUSDT", orderId: "shared-risk" },
+    { profileId, symbol: "ETHUSDT", orderId: "entry-1" },
+  ];
+  const trades = [
+    {
+      id: "import-first",
+      profileId,
+      symbol: "BTCUSDT",
+      sourceOrderIds: ["entry-1", "exit-1", "shared-risk"],
+    },
+    {
+      id: "import-second",
+      profileId,
+      symbol: "BTCUSDT",
+      sourceOrderIds: ["shared-risk"],
+    },
+  ];
+
+  const result = removeReplayTradeRecord(orders, trades, "import-first");
+
+  assert.deepEqual(result.trades.map((trade) => trade.id), ["import-second"]);
+  assert.deepEqual(
+    result.orders.map((order) => `${order.symbol}:${order.orderId}`),
+    ["BTCUSDT:shared-risk", "ETHUSDT:entry-1"],
+  );
+  assert.equal(result.removedOrderCount, 2);
+  assert.throws(
+    () => removeReplayTradeRecord([], [{ id: "built-in", symbol: "BTCUSDT" }], "built-in"),
+    /内置示例记录不能删除/,
   );
 });
