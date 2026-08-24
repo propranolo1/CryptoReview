@@ -5,6 +5,7 @@ import {
   INCREMENTAL_SYNC_OVERLAP_MS,
   resolveExchangeSyncRange,
   selectActiveBinanceOrders,
+  selectKnownBinanceSymbols,
 } from "../lib/exchange-sync.mjs";
 
 test("快速更新从上次成功时间前保留重叠区间，手动同步仍使用完整日期范围", () => {
@@ -103,4 +104,31 @@ test("活动订单补查只选择当前 Binance 账户且排除终态、OKX 与�
     { symbol: "BTCUSDT", orderId: "100", kind: "normal" },
     { symbol: "BTCUSDT", orderId: "300", kind: "algo" },
   ]);
+});
+
+test("已知交易对包含当前 Binance 账户的终态订单并排除其它来源", () => {
+  const base = {
+    userId: "binance-account",
+    symbol: "btcusdt",
+    orderId: "100",
+    sourceKind: "api-normal",
+    status: "FILLED",
+  };
+  const selected = selectKnownBinanceSymbols([
+    base,
+    { ...base, symbol: "BTCUSDT", orderId: "101" },
+    { ...base, symbol: "ETHUSDT", orderId: "102", sourceKind: "api-algo" },
+    { ...base, symbol: "SOLUSDT", orderId: "103", userId: "other-account" },
+    {
+      ...base,
+      symbol: "DOGEUSDT",
+      orderId: "104",
+      sourceKind: "okx-api-normal",
+      exchangeProvider: "okx-swap",
+    },
+    { ...base, symbol: "XRPUSDT", orderId: "105", sourceKind: undefined },
+    { ...base, symbol: "无效交易对", orderId: "106" },
+  ], "binance-account");
+
+  assert.deepEqual(selected, ["BTCUSDT", "ETHUSDT"]);
 });

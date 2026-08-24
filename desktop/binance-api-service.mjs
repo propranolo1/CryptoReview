@@ -1,6 +1,7 @@
 import {
   resolveExchangeSyncRange,
   selectActiveBinanceOrders,
+  selectKnownBinanceSymbols,
 } from "../lib/exchange-sync.mjs";
 
 /** 协调凭证保险库、只读 Binance 客户端与本地订单存档。 */
@@ -45,20 +46,21 @@ export function createBinanceApiService({ repository, vault, client }) {
             ? vault.getStatus?.().lastSyncedAt ?? null
             : null,
         });
-        const archivedOrders = syncRange.incremental
-          ? repository.loadState?.().orders ?? []
-          : [];
-        const knownActiveOrders = selectActiveBinanceOrders(
+        const archivedOrders = repository.loadState?.().orders ?? [];
+        const knownSymbols = selectKnownBinanceSymbols(
           archivedOrders,
           credentials.accountId,
         );
+        const knownActiveOrders = syncRange.incremental
+          ? selectActiveBinanceOrders(archivedOrders, credentials.accountId)
+          : [];
         const result = await client.syncOrders({
           ...options,
           startTime: syncRange.startTime,
           endTime: syncRange.endTime,
-          // 历史范围只从本次流水、持仓、挂单和当前账户活动订单发现交易对，
-          // 避免把其他账户或其他交易所的旧币对带入每轮查询。
-          symbols: [],
+          // 只使用当前 Binance 账户曾经同步过的交易对，避免已平仓后无法再次发现，
+          // 同时不把其他账户、其他交易所或手工导入的币对带入查询。
+          symbols: knownSymbols,
           knownActiveOrders,
           ...credentials,
         });

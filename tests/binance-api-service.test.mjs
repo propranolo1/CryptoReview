@@ -160,7 +160,7 @@ test("Binance 同步快照保存失败时不得标记同步成功", async () => 
   assert.equal(markSyncedCalled, false);
 });
 
-test("Binance 快速更新使用增量范围并只补查当前账户活动订单", async () => {
+test("Binance 快速更新使用增量范围并查询当前账户全部已知交易对", async () => {
   const requestedStartTime = Date.parse("2026-07-01T00:00:00.000Z");
   const lastSyncedAt = Date.parse("2026-07-20T12:00:00.000Z");
   const endTime = Date.parse("2026-07-21T12:00:00.000Z");
@@ -176,6 +176,13 @@ test("Binance 快速更新使用增量范围并只补查当前账户活动订单
               orderId: "100",
               sourceKind: "api-normal",
               status: "NEW",
+            },
+            {
+              userId: "account",
+              symbol: "ETHUSDT",
+              orderId: "101",
+              sourceKind: "api-normal",
+              status: "FILLED",
             },
             {
               userId: "other-account",
@@ -223,7 +230,83 @@ test("Binance 快速更新使用增量范围并只补查当前账户活动订单
   assert.deepEqual(clientOptions.knownActiveOrders, [
     { symbol: "BTCUSDT", orderId: "100", kind: "normal" },
   ]);
+  assert.deepEqual(clientOptions.symbols, ["BTCUSDT", "ETHUSDT"]);
   assert.equal(result.syncMode, "incremental");
   assert.equal(result.requestedStartTime, requestedStartTime);
   assert.equal(result.effectiveStartTime, clientOptions.startTime);
+});
+
+test("Binance 手动完整同步也使用当前账户已保存的交易对恢复遗漏历史", async () => {
+  const startTime = Date.parse("2026-08-20T00:00:00.000Z");
+  const endTime = Date.parse("2026-08-24T00:00:00.000Z");
+  let clientOptions;
+  const service = createBinanceApiService({
+    repository: {
+      loadState() {
+        return {
+          orders: [
+            {
+              userId: "account",
+              symbol: "ETHUSDT",
+              orderId: "200",
+              sourceKind: "api-normal",
+              status: "FILLED",
+            },
+            {
+              userId: "account",
+              symbol: "BTCUSDT",
+              orderId: "201",
+              sourceKind: "api-normal",
+              status: "FILLED",
+            },
+            {
+              userId: "other-account",
+              symbol: "SOLUSDT",
+              orderId: "202",
+              sourceKind: "api-normal",
+              status: "FILLED",
+            },
+            {
+              userId: "account",
+              symbol: "DOGEUSDT",
+              orderId: "203",
+              sourceKind: "okx-api-normal",
+              exchangeProvider: "okx-swap",
+              status: "FILLED",
+            },
+          ],
+        };
+      },
+      saveExchangeSyncSnapshot() {},
+    },
+    vault: {
+      getStatus() {
+        return { configured: true, lastSyncedAt: endTime - 60_000 };
+      },
+      read() {
+        return { accountId: "account", apiKey: "key", apiSecret: "secret" };
+      },
+      markSynced(syncedAt) {
+        return { configured: true, lastSyncedAt: syncedAt };
+      },
+    },
+    client: {
+      async syncOrders(options) {
+        clientOptions = options;
+        return {
+          orders: [],
+          openPositions: [],
+          symbols: [],
+          syncedAt: endTime,
+        };
+      },
+    },
+  });
+
+  const result = await service.syncOrders({ startTime, endTime });
+
+  assert.deepEqual(clientOptions.symbols, ["BTCUSDT", "ETHUSDT"]);
+  assert.deepEqual(clientOptions.knownActiveOrders, []);
+  assert.equal(clientOptions.startTime, startTime);
+  assert.equal(result.syncMode, "full");
 });

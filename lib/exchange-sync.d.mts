@@ -16,3 +16,8 @@ export function selectActiveBinanceOrders(
   orders: unknown,
   accountId: string,
 ): Array<{ symbol: string; orderId: string; kind: "normal" | "algo" }>;
+
+export function selectKnownBinanceSymbols(
+  orders: unknown,
+  accountId: string,
+): string[];
