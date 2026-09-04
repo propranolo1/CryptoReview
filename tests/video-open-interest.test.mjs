@@ -54,6 +54,20 @@ test("视频 OI 请求固定使用现有接口和 limit=500，并规范化交易
   });
 });
 
+test("视频 OI 请求保留 Binance 官方中文交易对", () => {
+  const url = new URL(
+    createVideoOpenInterestRequestUrl({
+      symbol: " 牛来 / USDT ",
+      period: "5m",
+      startTime: START_TIME,
+      endTime: START_TIME + PERIOD_MS,
+    }),
+    "http://localhost",
+  );
+
+  assert.equal(url.searchParams.get("symbol"), "牛来USDT");
+});
+
 test("按最后一个 OI 时间戳加 1ms 向后分页，并去除跨页重复点", async () => {
   const firstPage = Array.from({ length: 500 }, (_, index) => point(index));
   const secondPage = [

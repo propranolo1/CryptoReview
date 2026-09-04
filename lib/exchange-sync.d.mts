@@ -1,5 +1,8 @@
 export const INCREMENTAL_SYNC_OVERLAP_MS: number;
 
+export function normalizeBinanceSymbol(value: unknown): string;
+export function isBinanceSymbol(value: unknown): value is string;
+
 export function resolveExchangeSyncRange(input: {
   startTime: number;
   endTime: number;

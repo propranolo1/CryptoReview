@@ -476,6 +476,51 @@ test("没有收益流水或当前挂单时返回空同步结果而不是要求�
   assert.deepEqual(historyRequests, []);
 });
 
+test("Binance API 同步保留官方中文交易对并按编码后的 symbol 查询历史", async () => {
+  const historySymbols = [];
+  const client = createBinanceUsdmClient({
+    now: () => 1784189000000,
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      if (url.pathname === "/fapi/v1/time") {
+        return Response.json({ serverTime: 1784189000000 });
+      }
+      if (url.pathname === "/fapi/v1/income") {
+        return Response.json([{
+          symbol: "牛来USDT",
+          incomeType: "COMMISSION",
+          income: "-0.01",
+          time: 1784182961000,
+          tranId: 9001,
+        }]);
+      }
+      if (url.pathname === "/fapi/v3/positionRisk" ||
+          url.pathname === "/fapi/v1/openOrders" ||
+          url.pathname === "/fapi/v1/openAlgoOrders") {
+        return Response.json([]);
+      }
+      if (url.pathname === "/fapi/v1/allOrders" ||
+          url.pathname === "/fapi/v1/allAlgoOrders" ||
+          url.pathname === "/fapi/v1/userTrades") {
+        historySymbols.push(url.searchParams.get("symbol"));
+        return Response.json([]);
+      }
+      return Response.json({ code: -1, msg: "unexpected" }, { status: 404 });
+    },
+  });
+
+  const result = await client.syncOrders({
+    apiKey: "api-key",
+    apiSecret: "api-secret",
+    accountId: "local-account",
+    startTime: 1784102400000,
+    endTime: 1784188799000,
+  });
+
+  assert.deepEqual(result.symbols, ["牛来USDT"]);
+  assert.deepEqual(historySymbols, ["牛来USDT", "牛来USDT", "牛来USDT"]);
+});
+
 test("同步未平仓仓位时同时保留 userTrades 手续费与真实资金费流水", async () => {
   const requests = [];
   const entryOrder = {

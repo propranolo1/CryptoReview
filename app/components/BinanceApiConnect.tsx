@@ -2,6 +2,10 @@
 
 import { KeyRound, Link2, RefreshCw, ShieldCheck, Unplug, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  isBinanceSymbol,
+  normalizeBinanceSymbol,
+} from "@/lib/exchange-sync.mjs";
 import styles from "./BinanceApiConnect.module.css";
 
 type Props = {
@@ -85,7 +89,9 @@ export function BinanceApiConnect({
   >({});
 
   const suggestedSymbols = useMemo(
-    () => [...new Set(defaultSymbols.map(normalizeSymbol).filter(Boolean))],
+    () => [...new Set(
+      defaultSymbols.map(normalizeBinanceSymbol).filter(isBinanceSymbol),
+    )],
     [defaultSymbols],
   );
   const hasConnectedExchange = binanceStatus.configured || okxStatus.configured;
@@ -943,10 +949,6 @@ function formatCombinedProgress(
 
 function dateInputValue(timestamp: number) {
   return new Date(timestamp + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
-function normalizeSymbol(value: string) {
-  return String(value ?? "").toUpperCase().replace(/[\s/_-]/g, "");
 }
 
 function errorText(cause: unknown, fallback: string) {

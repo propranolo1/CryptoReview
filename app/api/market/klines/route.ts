@@ -3,6 +3,10 @@ import {
   createBinanceFuturesKlineUrl,
   parseBinanceKlines,
 } from "@/lib/market.mjs";
+import {
+  isBinanceSymbol,
+  normalizeBinanceSymbol,
+} from "@/lib/exchange-sync.mjs";
 
 const SUPPORTED_INTERVALS = new Set([
   "1m",
@@ -30,18 +34,16 @@ function parseOptionalTimestamp(value: string | null) {
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams;
-  const symbol = (query.get("symbol") ?? "")
-    .toUpperCase()
-    .replace(/[\s/_-]/g, "");
+  const symbol = normalizeBinanceSymbol(query.get("symbol"));
   const interval = query.get("interval") ?? "1h";
   const market = query.get("market") ?? "binance";
   const startTime = parseOptionalTimestamp(query.get("startTime"));
   const endTime = parseOptionalTimestamp(query.get("endTime"));
   const limit = Number(query.get("limit") ?? 500);
 
-  if (!/^[A-Z0-9]{5,24}$/.test(symbol)) {
+  if (!isBinanceSymbol(symbol)) {
     return NextResponse.json(
-      { message: "交易对格式无效，请使用 BTCUSDT 这类 Binance 交易对。" },
+      { message: "交易对格式无效，请使用 BTCUSDT、牛来USDT 这类 Binance 交易对。" },
       { status: 400 },
     );
   }

@@ -1,4 +1,8 @@
 import { createHmac } from "node:crypto";
+import {
+  isBinanceSymbol,
+  normalizeBinanceSymbol,
+} from "../lib/exchange-sync.mjs";
 
 const BINANCE_FUTURES_ORIGIN = "https://fapi.binance.com";
 const QUERY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 - 1;
@@ -610,8 +614,8 @@ function discoverSymbols({ seedSymbols, incomeHistory, positionRisk, openNormal,
 
 function normalizeSymbol(value) {
   if (typeof value !== "string") throw new TypeError("交易对格式无效");
-  const symbol = value.toUpperCase().replace(/[\s/_-]/g, "");
-  if (!/^[A-Z0-9]{5,24}$/.test(symbol)) throw new TypeError(`交易对格式无效：${value}`);
+  const symbol = normalizeBinanceSymbol(value);
+  if (!isBinanceSymbol(symbol)) throw new TypeError(`交易对格式无效：${value}`);
   return symbol;
 }
 

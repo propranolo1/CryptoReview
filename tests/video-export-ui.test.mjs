@@ -20,6 +20,7 @@ test("单笔复盘提供可配置的 1080P 视频导出入口", async () => {
   assert.match(videoExport, /new MediaRecorder/);
   assert.match(videoExport, /fetchVideoExportCandles/);
   assert.match(videoExport, /fetchVideoOpenInterest/);
+  assert.match(videoExport, /normalizeBinanceSymbol\(trade\.symbol\)/);
   assert.match(videoExport, /历史 OI 不完整，视频中已隐藏 OI/);
   assert.match(renderer, /REPLAY_VIDEO_WIDTH = 1920/);
   assert.match(renderer, /REPLAY_VIDEO_HEIGHT = 1080/);

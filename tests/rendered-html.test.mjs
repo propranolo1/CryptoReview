@@ -204,15 +204,17 @@ test("交易切换、平仓日期筛选与独立表现模块均保留回归锚�
 });
 
 test("行情接口支持按 Binance 单页上限分批获取四千根 K 线", async () => {
-  const route = await readFile(
-    new URL("../app/api/market/klines/route.ts", import.meta.url),
-    "utf8",
-  );
+  const [route, openInterestRoute] = await Promise.all([
+    readFile(new URL("../app/api/market/klines/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/market/open-interest/route.ts", import.meta.url), "utf8"),
+  ]);
 
   assert.match(route, /limit\s*>\s*4000/);
   assert.match(route, /Math\.min\(1000,\s*remaining\)/);
   assert.match(route, /nextStartTime/);
   assert.match(route, /allRows/);
+  assert.match(route, /isBinanceSymbol/);
+  assert.match(openInterestRoute, /isBinanceSymbol/);
 });
 
 test("条件单截图在本机 OCR 校对后写入回放，并显示 TP/SL 与执行方式", async () => {

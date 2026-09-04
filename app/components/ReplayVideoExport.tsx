@@ -22,6 +22,10 @@ import {
   type VideoExportConfig,
   type VideoExportFramePlan,
 } from "@/lib/video-export.mjs";
+import {
+  isBinanceSymbol,
+  normalizeBinanceSymbol,
+} from "@/lib/exchange-sync.mjs";
 import { fetchVideoExportCandles } from "@/lib/video-market.mjs";
 import { fetchVideoOpenInterest } from "@/lib/video-open-interest.mjs";
 import {
@@ -1184,7 +1188,8 @@ function buildVideoFileName(
     .slice(0, 16)
     .replace("T", "-")
     .replace(":", "");
-  const symbol = trade.symbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const normalizedSymbol = normalizeBinanceSymbol(trade.symbol);
+  const symbol = isBinanceSymbol(normalizedSymbol) ? normalizedSymbol : "TRADE";
   return `${symbol}-${date}-${frame}-复盘.${extension}`;
 }
 

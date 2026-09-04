@@ -3,10 +3,19 @@ import test from "node:test";
 
 import {
   INCREMENTAL_SYNC_OVERLAP_MS,
+  isBinanceSymbol,
+  normalizeBinanceSymbol,
   resolveExchangeSyncRange,
   selectActiveBinanceOrders,
   selectKnownBinanceSymbols,
 } from "../lib/exchange-sync.mjs";
+
+test("Binance 官方中文 U 本位交易对可以规范化，同时仍拒绝查询参数字符", () => {
+  assert.equal(normalizeBinanceSymbol(" 牛来 / usdt "), "牛来USDT");
+  assert.equal(isBinanceSymbol("牛来USDT"), true);
+  assert.equal(isBinanceSymbol("牛来USDT&limit=1"), false);
+  assert.equal(isBinanceSymbol("牛来USDT&#x20;"), false);
+});
 
 test("快速更新从上次成功时间前保留重叠区间，手动同步仍使用完整日期范围", () => {
   const requestedStartTime = Date.parse("2026-07-01T00:00:00.000Z");
@@ -131,4 +140,19 @@ test("已知交易对包含当前 Binance 账户的终态订单并排除其它�
   ], "binance-account");
 
   assert.deepEqual(selected, ["BTCUSDT", "ETHUSDT"]);
+});
+
+test("活动订单与历史种子保留 Binance 官方中文交易对", () => {
+  const order = {
+    userId: "binance-account",
+    symbol: "牛来USDT",
+    orderId: "9001",
+    sourceKind: "api-normal",
+    status: "NEW",
+  };
+
+  assert.deepEqual(selectKnownBinanceSymbols([order], "binance-account"), ["牛来USDT"]);
+  assert.deepEqual(selectActiveBinanceOrders([order], "binance-account"), [
+    { symbol: "牛来USDT", orderId: "9001", kind: "normal" },
+  ]);
 });

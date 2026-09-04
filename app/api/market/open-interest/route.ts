@@ -3,6 +3,10 @@ import {
   createBinanceFuturesOpenInterestUrl,
   parseBinanceOpenInterestHistory,
 } from "@/lib/market.mjs";
+import {
+  isBinanceSymbol,
+  normalizeBinanceSymbol,
+} from "@/lib/exchange-sync.mjs";
 
 const SUPPORTED_PERIODS = new Set(["5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"]);
 
@@ -14,16 +18,14 @@ function parseOptionalTimestamp(value: string | null) {
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams;
-  const symbol = (query.get("symbol") ?? "")
-    .toUpperCase()
-    .replace(/[\s/_-]/g, "");
+  const symbol = normalizeBinanceSymbol(query.get("symbol"));
   const period = query.get("period") ?? "5m";
   const startTime = parseOptionalTimestamp(query.get("startTime"));
   const endTime = parseOptionalTimestamp(query.get("endTime"));
   const limit = Number(query.get("limit") ?? 500);
 
-  if (!/^[A-Z0-9]{5,24}$/.test(symbol)) {
-    return NextResponse.json({ message: "交易对格式无效，请使用 BTCUSDT 这类 Binance 交易对。" }, { status: 400 });
+  if (!isBinanceSymbol(symbol)) {
+    return NextResponse.json({ message: "交易对格式无效，请使用 BTCUSDT、牛来USDT 这类 Binance 交易对。" }, { status: 400 });
   }
   if (!SUPPORTED_PERIODS.has(period)) {
     return NextResponse.json({ message: "该时间框架不支持历史 OI。" }, { status: 400 });

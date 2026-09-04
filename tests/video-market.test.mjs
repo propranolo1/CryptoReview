@@ -88,6 +88,30 @@ test("视频行情请求固定使用现有本地代理和用户所选市场参�
   assert.equal(request.searchParams.get("limit"), "1000");
 });
 
+test("视频行情保留 Binance 官方中文交易对", async () => {
+  let requestedUrl = "";
+  const first = candle(0);
+  const result = await fetchVideoExportCandles({
+    fetchImpl: async (url) => {
+      requestedUrl = String(url);
+      return {
+        ok: true,
+        async json() {
+          return { source: "Binance Futures", symbol: "牛来USDT", candles: [first] };
+        },
+      };
+    },
+    symbol: " 牛来 / USDT ",
+    interval: "5m",
+    market: "binance-futures",
+    startTime: first.time * 1000,
+    endTime: first.closeTime,
+  });
+
+  assert.equal(new URL(requestedUrl, "http://localhost").searchParams.get("symbol"), "牛来USDT");
+  assert.equal(result.symbol, "牛来USDT");
+});
+
 test("上游错误、无进展分页和无效 K 线不会生成伪造视频行情", async () => {
   await assert.rejects(
     () => fetchVideoExportCandles({
