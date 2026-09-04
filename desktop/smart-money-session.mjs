@@ -96,11 +96,17 @@ export function createSmartMoneySessionService({
     return loginPromise;
   };
 
-  const syncLatestRecords = async ({ topTraderId: inputTopTraderId } = {}) => {
+  const syncLatestRecords = async ({
+    topTraderId: inputTopTraderId,
+    includePositions: inputIncludePositions = true,
+    includeLatestRecords: inputIncludeLatestRecords = true,
+  } = {}) => {
     const topTraderId = requireTopTraderId(inputTopTraderId);
+    const includePositions = inputIncludePositions !== false;
+    const includeLatestRecords = inputIncludeLatestRecords !== false;
     const endTime = Math.floor(now());
     if (!Number.isSafeInteger(endTime) || endTime <= 0) {
-      throw new TypeError("本机时间无效，无法读取 Binance 最新操作记录");
+      throw new TypeError("本机时间无效，无法读取 Binance 聪明钱数据");
     }
     const startTime = endTime - LATEST_RECORD_WINDOW_MS;
     const positionsByKey = new Map();
@@ -109,82 +115,86 @@ export function createSmartMoneySessionService({
     let page = 1;
     let truncated = false;
 
-    for (let positionPage = 1; positionPage <= MAX_PAGES; positionPage += 1) {
-      const url = new URL(BINANCE_CURRENT_POSITIONS_API);
-      url.searchParams.set("topTraderId", topTraderId);
-      url.searchParams.set("marketType", "UM");
-      url.searchParams.set("rows", String(POSITION_PAGE_SIZE));
-      url.searchParams.set("page", String(positionPage));
-      const response = await browserSession.fetch(url.toString(), {
-        method: "GET",
-        credentials: "include",
-        useSessionCookies: true,
-        headers: {
-          Accept: "application/json",
-          "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
-          Clienttype: "web",
-          Referer: profileUrl(topTraderId),
-        },
-      });
+    if (includePositions) {
+      for (let positionPage = 1; positionPage <= MAX_PAGES; positionPage += 1) {
+        const url = new URL(BINANCE_CURRENT_POSITIONS_API);
+        url.searchParams.set("topTraderId", topTraderId);
+        url.searchParams.set("marketType", "UM");
+        url.searchParams.set("rows", String(POSITION_PAGE_SIZE));
+        url.searchParams.set("page", String(positionPage));
+        const response = await browserSession.fetch(url.toString(), {
+          method: "GET",
+          credentials: "include",
+          useSessionCookies: true,
+          headers: {
+            Accept: "application/json",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
+            Clienttype: "web",
+            Referer: profileUrl(topTraderId),
+          },
+        });
 
-      if (response.status === 401 || response.status === 403) {
-        return authorizationRequiredResult();
+        if (response.status === 401 || response.status === 403) {
+          return authorizationRequiredResult();
+        }
+        if (!response.ok) {
+          throw new Error(`Binance 当前仓位接口返回 ${response.status}，请稍后重试。`);
+        }
+        const payload = await response.json().catch(() => null);
+        if (isAuthorizationPayload(payload)) return authorizationRequiredResult();
+        if (isFailedPayload(payload)) {
+          throw new Error(formatBinanceMessage(payload));
+        }
+        const rawPositions = extractRecordRows(payload);
+        for (const rawPosition of rawPositions) {
+          const position = normalizeCurrentPosition(rawPosition);
+          if (position) positionsByKey.set(stablePositionKey(position), position);
+        }
+        if (rawPositions.length < POSITION_PAGE_SIZE) break;
+        if (positionPage === MAX_PAGES) positionsTruncated = true;
       }
-      if (!response.ok) {
-        throw new Error(`Binance 当前仓位接口返回 ${response.status}，请稍后重试。`);
-      }
-      const payload = await response.json().catch(() => null);
-      if (isAuthorizationPayload(payload)) return authorizationRequiredResult();
-      if (isFailedPayload(payload)) {
-        throw new Error(formatBinanceMessage(payload));
-      }
-      const rawPositions = extractRecordRows(payload);
-      for (const rawPosition of rawPositions) {
-        const position = normalizeCurrentPosition(rawPosition);
-        if (position) positionsByKey.set(stablePositionKey(position), position);
-      }
-      if (rawPositions.length < POSITION_PAGE_SIZE) break;
-      if (positionPage === MAX_PAGES) positionsTruncated = true;
     }
 
-    for (; page <= MAX_PAGES; page += 1) {
-      const url = new URL(BINANCE_LATEST_RECORDS_API);
-      url.searchParams.set("topTraderId", topTraderId);
-      url.searchParams.set("marketType", "UM");
-      url.searchParams.set("startTime", String(startTime));
-      url.searchParams.set("endTime", String(endTime));
-      url.searchParams.set("rows", String(PAGE_SIZE));
-      url.searchParams.set("page", String(page));
-      const response = await browserSession.fetch(url.toString(), {
-        method: "GET",
-        credentials: "include",
-        useSessionCookies: true,
-        headers: {
-          Accept: "application/json",
-          "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
-          Clienttype: "web",
-          Referer: profileUrl(topTraderId),
-        },
-      });
+    if (includeLatestRecords) {
+      for (; page <= MAX_PAGES; page += 1) {
+        const url = new URL(BINANCE_LATEST_RECORDS_API);
+        url.searchParams.set("topTraderId", topTraderId);
+        url.searchParams.set("marketType", "UM");
+        url.searchParams.set("startTime", String(startTime));
+        url.searchParams.set("endTime", String(endTime));
+        url.searchParams.set("rows", String(PAGE_SIZE));
+        url.searchParams.set("page", String(page));
+        const response = await browserSession.fetch(url.toString(), {
+          method: "GET",
+          credentials: "include",
+          useSessionCookies: true,
+          headers: {
+            Accept: "application/json",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
+            Clienttype: "web",
+            Referer: profileUrl(topTraderId),
+          },
+        });
 
-      if (response.status === 401 || response.status === 403) {
-        return authorizationRequiredResult();
+        if (response.status === 401 || response.status === 403) {
+          return authorizationRequiredResult();
+        }
+        if (!response.ok) {
+          throw new Error(`Binance 最新操作记录接口返回 ${response.status}，请稍后重试。`);
+        }
+        const payload = await response.json().catch(() => null);
+        if (isAuthorizationPayload(payload)) return authorizationRequiredResult();
+        if (isFailedPayload(payload)) {
+          throw new Error(formatBinanceMessage(payload));
+        }
+        const rawRecords = extractRecordRows(payload);
+        for (const rawRecord of rawRecords) {
+          const record = normalizeLatestRecord(rawRecord);
+          if (record) recordsByKey.set(stableRecordKey(record), record);
+        }
+        if (rawRecords.length < PAGE_SIZE) break;
+        if (page === MAX_PAGES) truncated = true;
       }
-      if (!response.ok) {
-        throw new Error(`Binance 最新操作记录接口返回 ${response.status}，请稍后重试。`);
-      }
-      const payload = await response.json().catch(() => null);
-      if (isAuthorizationPayload(payload)) return authorizationRequiredResult();
-      if (isFailedPayload(payload)) {
-        throw new Error(formatBinanceMessage(payload));
-      }
-      const rawRecords = extractRecordRows(payload);
-      for (const rawRecord of rawRecords) {
-        const record = normalizeLatestRecord(rawRecord);
-        if (record) recordsByKey.set(stableRecordKey(record), record);
-      }
-      if (rawRecords.length < PAGE_SIZE) break;
-      if (page === MAX_PAGES) truncated = true;
     }
 
     const records = [...recordsByKey.values()].sort(
@@ -205,8 +215,10 @@ export function createSmartMoneySessionService({
       total: records.length,
       truncated,
       warnings: [
-        "Binance 聪明钱最新操作记录仅覆盖最近 30 天，缺少更早开仓时无法重建完整交易。",
-        "最新操作记录不提供手续费，复盘手续费按未知处理。",
+        ...(includeLatestRecords ? [
+          "Binance 聪明钱最新操作记录仅覆盖最近 30 天，缺少更早开仓时无法重建完整交易。",
+          "最新操作记录不提供手续费，复盘手续费按未知处理。",
+        ] : []),
         ...(positionsTruncated ? ["当前仓位超过 900 条，本次只读取前 900 条。"] : []),
         ...(truncated ? ["最新操作记录超过 1,000 条，本次只读取前 1,000 条。"] : []),
       ],

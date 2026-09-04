@@ -79,7 +79,7 @@ export function SmartMoneyImport({
               <span className={styles.eyebrow}>BINANCE SMART MONEY</span>
               <h2 id={titleId}>同步聪明钱主页</h2>
               <p id={descriptionId}>
-                输入主页 URL 后创建独立本地用户，并同步最近 30 天 U 本位操作生成复盘。
+                输入主页 URL 后创建独立本地用户，并同步共享的当前仓位与最近 30 天 U 本位操作生成复盘。
               </p>
             </div>
             <button

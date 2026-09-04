@@ -138,6 +138,54 @@ test("登录后的当前仓位与最新操作记录会一起同步，并过滤�
   ]);
 });
 
+test("主页只分享当前仓位时不请求未分享的最新操作记录", async () => {
+  const requestedPaths = [];
+  const browserSession = {
+    fetch: async (input) => {
+      const url = new URL(input);
+      requestedPaths.push(url.pathname);
+      if (!url.pathname.endsWith("/query-positions")) {
+        throw new Error("不应请求未分享的最新操作记录");
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        data: {
+          data: [{
+            symbol: "BTCUSDT",
+            side: "SHORT",
+            amount: "0.02",
+            entryPrice: "108000",
+            markPrice: "107500",
+          }],
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  };
+  const service = createSmartMoneySessionService({
+    browserSession,
+    BrowserWindow: class {},
+    now: () => 1_788_000_000_000,
+  });
+
+  const result = await service.syncLatestRecords({
+    topTraderId: TOP_TRADER_ID,
+    includePositions: true,
+    includeLatestRecords: false,
+  });
+
+  assert.equal(result.authorizationRequired, false);
+  assert.deepEqual(requestedPaths, [
+    "/bapi/asset/v1/private/future/smart-money/profile/query-positions",
+  ]);
+  assert.equal(result.positions.length, 1);
+  assert.equal(result.positions[0].positionSide, "SHORT");
+  assert.deepEqual(result.records, []);
+  assert.equal(result.total, 0);
+});
+
 test("未登录或登录失效时返回明确授权状态，不把 Binance 原始响应泄漏给界面", async () => {
   const browserSession = {
     fetch: async () => new Response("private payload", { status: 401 }),

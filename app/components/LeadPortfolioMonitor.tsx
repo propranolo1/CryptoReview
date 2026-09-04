@@ -39,7 +39,7 @@ export function LeadPortfolioMonitor({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [sourceUrl, setSourceUrl] = useState(
-    profile.copyTradeMonitor?.sourceUrl ?? "",
+    profile.smartMoneySource?.sourceUrl ?? profile.copyTradeMonitor?.sourceUrl ?? "",
   );
   const [intervalSeconds, setIntervalSeconds] = useState<30 | 60 | 300>(
     profile.copyTradeMonitor?.intervalSeconds ?? 60,
@@ -58,11 +58,13 @@ export function LeadPortfolioMonitor({
   }, [open]);
 
   useEffect(() => {
-    setSourceUrl(profile.copyTradeMonitor?.sourceUrl ?? "");
+    setSourceUrl(
+      profile.smartMoneySource?.sourceUrl ?? profile.copyTradeMonitor?.sourceUrl ?? "",
+    );
     setIntervalSeconds(profile.copyTradeMonitor?.intervalSeconds ?? 60);
     setEnabled(profile.copyTradeMonitor?.enabled ?? true);
     setError("");
-  }, [profile.id, profile.copyTradeMonitor]);
+  }, [profile.id, profile.copyTradeMonitor, profile.smartMoneySource]);
 
   const closeDialog = () => {
     setOpen(false);
@@ -155,7 +157,7 @@ export function LeadPortfolioMonitor({
         disabled={disabled}
       >
         <Radio size={14} />
-        <span>同步公开带单</span>
+        <span>{profile.smartMoneySource ? "登录并同步聪明钱" : "同步公开带单"}</span>
         {monitor && <i aria-label={statusLabel} />}
       </button>
 
@@ -176,7 +178,7 @@ export function LeadPortfolioMonitor({
               <span className={styles.eyebrow}>PUBLIC COPY TRADING</span>
               <h2 id={titleId}>Binance 带单与聪明钱主页</h2>
               <p id={descriptionId}>
-                两类主页都会创建独立用户；聪明钱主页还会读取最近操作记录。
+                两类主页都会创建独立用户；聪明钱主页还会读取共享的当前仓位与最近操作。
               </p>
             </div>
             <button
@@ -208,7 +210,7 @@ export function LeadPortfolioMonitor({
                 spellCheck={false}
                 autoComplete="off"
               />
-              <small>支持公开带单或聪明钱主页；聪明钱记录需要登录 Binance 网页授权。</small>
+              <small>支持公开带单或聪明钱主页；聪明钱仓位和操作需要登录 Binance 网页授权。</small>
             </label>
 
             <div className={styles.settingsRow}>
@@ -285,7 +287,11 @@ export function LeadPortfolioMonitor({
                 disabled={syncing || sourceUrl.trim() === ""}
               >
                 <RefreshCw size={14} className={syncing ? styles.spinning : undefined} />
-                {syncing ? "正在同步…" : "立即同步"}
+                {syncing
+                  ? "正在同步…"
+                  : profile.smartMoneySource
+                    ? "登录并同步"
+                    : "立即同步"}
               </button>
             </div>
           </footer>

@@ -2798,12 +2798,17 @@ export function TradeReplay() {
 
     try {
       let payload: Record<string, unknown> | null = null;
+      let sharedSmartMoneyPositions: SmartMoneyPosition[] | null = null;
+      let sharedSmartMoneyFetchedAt: string | null = null;
+      let sharedSmartMoneyWarnings: string[] = [];
       if (
-        smartMoneySource?.sharingLatestRecord &&
+        (smartMoneySource?.sharingPosition || smartMoneySource?.sharingLatestRecord) &&
         desktopApi?.syncSmartMoneyLatestRecords
       ) {
         let latestResult = await desktopApi.syncSmartMoneyLatestRecords({
           topTraderId: smartMoneySource.topTraderId,
+          includePositions: smartMoneySource.sharingPosition,
+          includeLatestRecords: smartMoneySource.sharingLatestRecord,
         });
         if (latestResult.authorizationRequired && options.authorizeSmartMoney) {
           setImportNotice(
@@ -2815,28 +2820,36 @@ export function TradeReplay() {
           });
           latestResult = await desktopApi.syncSmartMoneyLatestRecords({
             topTraderId: smartMoneySource.topTraderId,
+            includePositions: smartMoneySource.sharingPosition,
+            includeLatestRecords: smartMoneySource.sharingLatestRecord,
           });
         }
         if (latestResult.authorizationRequired) {
           throw new Error(
             options.authorizeSmartMoney
-              ? "Binance 登录未完成，暂时无法读取该主页的最新操作记录。"
+              ? "Binance 登录未完成，暂时无法读取该主页共享的仓位或操作记录。"
               : latestResult.message,
           );
         }
-        usingSmartMoneyLatestRecords = true;
-        payload = {
-          portfolioId: config.portfolioId,
-          fetchedAt: latestResult.fetchedAt,
-          nickname: smartMoneySource.traderName ?? config.nickname,
-          positions: latestResult.positions,
-          orderHistory: {
-            total: latestResult.total,
-            list: latestResult.records,
-          },
-          warnings: latestResult.warnings,
-        };
-      } else {
+        sharedSmartMoneyPositions = latestResult.positions;
+        sharedSmartMoneyFetchedAt = latestResult.fetchedAt;
+        sharedSmartMoneyWarnings = latestResult.warnings;
+        if (smartMoneySource.sharingLatestRecord) {
+          usingSmartMoneyLatestRecords = true;
+          payload = {
+            portfolioId: config.portfolioId,
+            fetchedAt: latestResult.fetchedAt,
+            nickname: smartMoneySource.traderName ?? config.nickname,
+            positions: latestResult.positions,
+            orderHistory: {
+              total: latestResult.total,
+              list: latestResult.records,
+            },
+            warnings: latestResult.warnings,
+          };
+        }
+      }
+      if (!payload) {
         const response = await fetch("/api/copy-trade/lead-portfolio", {
           method: "POST",
           cache: "no-store",
@@ -2855,6 +2868,17 @@ export function TradeReplay() {
               ? payload.message
               : "Binance 公开带单同步失败，请稍后重试。",
           );
+        }
+        if (sharedSmartMoneyPositions) {
+          payload = {
+            ...payload,
+            fetchedAt: sharedSmartMoneyFetchedAt ?? payload.fetchedAt,
+            positions: sharedSmartMoneyPositions,
+            warnings: [
+              ...(Array.isArray(payload.warnings) ? payload.warnings : []),
+              ...sharedSmartMoneyWarnings,
+            ],
+          };
         }
       }
 
@@ -3036,7 +3060,7 @@ export function TradeReplay() {
       setPlaying(false);
       await handlePublicLeadSync(targetProfile, targetProfile.copyTradeMonitor, {
         fullHistory: true,
-        authorizeSmartMoney: snapshot.sharingLatestRecord,
+        authorizeSmartMoney: snapshot.sharingPosition || snapshot.sharingLatestRecord,
       });
     } catch (error) {
       const message = error instanceof Error

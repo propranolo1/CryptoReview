@@ -298,6 +298,8 @@ declare global {
     }): Promise<{ completed: true }>;
     syncSmartMoneyLatestRecords(options: {
       topTraderId: string;
+      includePositions: boolean;
+      includeLatestRecords: boolean;
     }): Promise<SmartMoneyLatestRecordsResult>;
     beginVideoExport(options: {
       suggestedName: string;

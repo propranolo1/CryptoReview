@@ -124,6 +124,8 @@ contextBridge.exposeInMainWorld("cryptoReviewDesktop", Object.freeze({
     const value = requireRecord(options, "聪明钱同步参数");
     return ipcRenderer.invoke("desktop:smart-money-sync-latest-records", {
       topTraderId: requireString(value.topTraderId, "聪明钱主页 ID"),
+      includePositions: value.includePositions !== false,
+      includeLatestRecords: value.includeLatestRecords !== false,
     });
   },
   beginVideoExport: (options) => {

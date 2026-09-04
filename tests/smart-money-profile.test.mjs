@@ -65,6 +65,24 @@ test("聪明钱最新操作记录授权能力会随用户配置持久化，但�
   assert.doesNotMatch(JSON.stringify(normalized), /cookie|token|credential/i);
 });
 
+test("主页只分享当前仓位时仍会持久化网页登录同步能力", () => {
+  const payload = createProfilePayload();
+  payload.data.sharingLatestRecord = false;
+  const snapshot = normalizeSmartMoneyProfileSnapshot(payload, {
+    topTraderId: TOP_TRADER_ID,
+    fetchedAt: "2026-09-04T08:53:54.855Z",
+  });
+  const profile = createSmartMoneyTradeProfile([], snapshot);
+  const normalized = normalizeTradeProfiles([profile]).find(
+    (item) => item.id === DEFAULT_SMART_MONEY_PROFILE_ID,
+  );
+
+  assert.equal(snapshot.sharingPosition, true);
+  assert.equal(snapshot.sharingLatestRecord, false);
+  assert.equal(normalized?.smartMoneySource?.sharingPosition, true);
+  assert.equal(normalized?.smartMoneySource?.sharingLatestRecord, false);
+});
+
 test("同一个聪明钱 URL 重复导入只更新原用户，不会创建重复档案", () => {
   const snapshot = normalizeSmartMoneyProfileSnapshot(createProfilePayload(), {
     topTraderId: TOP_TRADER_ID,
