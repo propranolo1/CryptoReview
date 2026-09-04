@@ -120,3 +120,58 @@ test("删除单条复盘时只移除该复盘专属的原始订单", async () =>
     /内置示例记录不能删除/,
   );
 });
+
+test("交易星标可以切换并只筛选当前已星标记录", async () => {
+  const {
+    filterStarredReplayTrades,
+    toggleReplayTradeStar,
+  } = await import("../lib/replay-persistence.mjs");
+  const trades = [
+    { id: "built-in", symbol: "BTCUSDT" },
+    { id: "import-starred", symbol: "ETHUSDT", starred: true },
+  ];
+
+  const starred = toggleReplayTradeStar(trades, "built-in");
+  assert.notStrictEqual(starred, trades);
+  assert.equal(starred[0].starred, true);
+  assert.strictEqual(starred[1], trades[1]);
+  assert.deepEqual(
+    filterStarredReplayTrades(starred).map((trade) => trade.id),
+    ["built-in", "import-starred"],
+  );
+
+  const unstarred = toggleReplayTradeStar(starred, "built-in");
+  assert.equal(unstarred[0].starred, false);
+  assert.deepEqual(
+    filterStarredReplayTrades(unstarred).map((trade) => trade.id),
+    ["import-starred"],
+  );
+  assert.throws(
+    () => toggleReplayTradeStar(trades, "missing"),
+    /要星标的复盘记录不存在/,
+  );
+});
+
+test("交易列表右键菜单同时提供星标和删除，并在全部下面显示星标筛选", async () => {
+  const component = await readFile(
+    new URL("app/components/TradeReplay.tsx", projectUrl),
+    "utf8",
+  );
+  const styles = await readFile(
+    new URL("app/globals.css", projectUrl),
+    "utf8",
+  );
+
+  assert.match(component, /onContextMenu=\{\(event\) => openTradeContextMenu\(event, item\)\}/);
+  assert.match(component, /role="menu"/);
+  assert.match(component, /取消星标/);
+  assert.match(component, /星标交易/);
+  assert.match(component, /删除交易/);
+  assert.match(
+    component,
+    /date-filter-label">全部[\s\S]*date-filter-label">星标[\s\S]*closeDateGroups\.map/,
+  );
+  assert.match(component, /filterStarredReplayTrades\(archiveTrades\)/);
+  assert.match(styles, /\.trade-context-menu\s*\{/);
+  assert.match(styles, /\.trade-star-indicator\s*\{/);
+});

@@ -803,6 +803,16 @@ body:has(.replay-app.theme-light) {
   outline-offset: 1px;
 }
 
+.date-filter-button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.date-filter-button:disabled:hover {
+  color: var(--muted);
+  background: transparent;
+}
+
 .date-filter-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -896,6 +906,12 @@ body:has(.replay-app.theme-light) {
   min-width: 0;
 }
 
+.trade-star-indicator {
+  flex: 0 0 auto;
+  color: var(--amber);
+  filter: drop-shadow(0 0 5px rgba(244, 184, 96, 0.28));
+}
+
 .trade-source-badge {
   max-width: 68px;
   padding: 3px 5px;
@@ -974,6 +990,57 @@ body:has(.replay-app.theme-light) {
   display: block;
   height: 100%;
   background: linear-gradient(90deg, rgba(244, 184, 96, 0.25), var(--amber));
+}
+
+.trade-context-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+}
+
+.trade-context-menu {
+  position: fixed;
+  width: 168px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.trade-context-menu button {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--menu-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trade-context-menu button:hover:not(:disabled) {
+  background: var(--menu-hover);
+  color: var(--text);
+}
+
+.trade-context-menu button:first-child svg {
+  color: var(--amber);
+}
+
+.trade-context-menu button.danger {
+  color: var(--loss);
+}
+
+.trade-context-menu button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
 }
 
 .import-hint {

@@ -118,3 +118,19 @@ test("刷新内置交割时只保留用户导入交易，不让旧示例覆盖�
   );
   assert.equal(mergeDefaultAndImportedTrades(defaults, saved)[0].id, "hype-screenshot-review");
 });
+
+test("刷新内置交易价格时保留用户设置的星标", () => {
+  const defaults = [
+    { id: "hype-screenshot-review", entryPrice: 66 },
+    { id: "btc-breakout", entryPrice: 64_744 },
+  ];
+  const saved = [
+    { id: "hype-screenshot-review", entryPrice: 99, starred: true },
+    { id: "btc-breakout", entryPrice: 94_250, starred: false },
+  ];
+
+  assert.deepEqual(mergeDefaultAndImportedTrades(defaults, saved), [
+    { ...defaults[0], starred: true },
+    defaults[1],
+  ]);
+});

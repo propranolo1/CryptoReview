@@ -13,6 +13,20 @@ export function persistDesktopReplaySnapshot(
   },
 ): Promise<void>;
 
+export interface ReplayStarredTrade {
+  id: string;
+  starred?: boolean;
+}
+
+export function filterStarredReplayTrades<T extends ReplayStarredTrade>(
+  trades: readonly T[],
+): T[];
+
+export function toggleReplayTradeStar<T extends ReplayStarredTrade>(
+  trades: readonly T[],
+  tradeId: string,
+): T[];
+
 export interface ReplayTradeRecordRemoval<TOrder = unknown, TTrade = unknown> {
   orders: TOrder[];
   trades: TTrade[];

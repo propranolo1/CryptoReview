@@ -183,7 +183,7 @@ test("重复生成的复盘按稳定来源键更新并保留用户笔记", () =>
       orderIds: { entry: "10905798348" },
       notes: "默认截图笔记",
     },
-    { ...hype, notes: "用户自己的复盘笔记", exits: [] },
+    { ...hype, notes: "用户自己的复盘笔记", exits: [], starred: true },
   ];
   const incoming = [{ ...hype, notes: "自动生成笔记" }];
   const merged = mergeImportedReplays(current, incoming);
@@ -191,6 +191,7 @@ test("重复生成的复盘按稳定来源键更新并保留用户笔记", () =>
   assert.equal(merged.length, 1);
   assert.equal(merged[0].id, hype.id);
   assert.equal(merged[0].notes, "用户自己的复盘笔记");
+  assert.equal(merged[0].starred, true);
   assert.equal(merged[0].exits.length, 1);
 });
 

@@ -52,7 +52,7 @@ test("交易侧栏可以点击收起并从折叠按钮恢复", async () => {
   assert.match(component, /tradeSidebarCollapsed/);
   assert.match(component, /aria-label="隐藏交易侧栏"/);
   assert.match(component, /aria-label="显示交易侧栏"/);
-  assert.match(component, /onContextMenu=\{\(event\) => void deleteTradeRecord\(event, item\)\}/);
+  assert.match(component, /onContextMenu=\{\(event\) => openTradeContextMenu\(event, item\)\}/);
   assert.match(styles, /\.workspace\.trade-sidebar-collapsed/);
   assert.match(styles, /\.trade-sidebar\.collapsed/);
 });

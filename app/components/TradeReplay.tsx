@@ -23,6 +23,7 @@ import {
   SkipForward,
   SlidersHorizontal,
   Sparkles,
+  Star,
   Sun,
   Target,
   Trash2,
@@ -117,8 +118,10 @@ import {
   groupTradesByCloseDate,
 } from "@/lib/performance.mjs";
 import {
+  filterStarredReplayTrades,
   persistDesktopReplaySnapshot,
   removeReplayTradeRecord,
+  toggleReplayTradeStar,
 } from "@/lib/replay-persistence.mjs";
 import {
   DEFAULT_INDICATOR_PANE_ORDER,
@@ -185,6 +188,7 @@ type ReplayTrade = NormalizedTrade & {
   title: string;
   strategy: string;
   notes: string;
+  starred?: boolean;
   profileId?: string;
   profileName?: string;
   riskLevels?: ReplayRiskLevel[];
@@ -214,6 +218,12 @@ type ReplayTrade = NormalizedTrade & {
     takeProfit: string;
     exit: string;
   };
+};
+
+type TradeContextMenuState = {
+  tradeId: string;
+  x: number;
+  y: number;
 };
 
 type BinanceOrderRecord = BinanceUsdmOrder;
@@ -348,6 +358,7 @@ const ORDER_HISTORY_STORAGE_KEY = "cryptoreview-binance-orders-v1";
 const TRAINING_RESULTS_STORAGE_KEY = "cryptoreview-training-results-v1";
 const TRADE_PROFILES_STORAGE_KEY = "cryptoreview-trade-profiles-v1";
 const ACTIVE_TRADE_PROFILE_STORAGE_KEY = "cryptoreview-active-trade-profile-v1";
+const STARRED_TRADE_FILTER = "__starred__";
 
 function mergeTrainingResults(...collections: unknown[][]): TrainingResultRecord[] {
   const byId = new Map<string, TrainingResultRecord>();
@@ -1537,6 +1548,7 @@ export function TradeReplay() {
   const [profileCreateError, setProfileCreateError] = useState("");
   const [profileDeleting, setProfileDeleting] = useState(false);
   const [deletingTradeId, setDeletingTradeId] = useState<string | null>(null);
+  const [tradeContextMenu, setTradeContextMenu] = useState<TradeContextMenuState | null>(null);
   const [tradeSidebarCollapsed, setTradeSidebarCollapsed] = useState(false);
   const [trainingResults, setTrainingResults] = useState<TrainingResultRecord[]>([]);
   const [selectedId, setSelectedId] = useState(DEFAULT_TRADES[0].id);
@@ -1645,10 +1657,19 @@ export function TradeReplay() {
     () => groupTradesByCloseDate(archiveTrades),
     [archiveTrades],
   );
-  const filteredTrades = useMemo(
-    () => filterTradesByCloseDate(archiveTrades, selectedDate),
-    [archiveTrades, selectedDate],
+  const starredTrades = useMemo(
+    () => filterStarredReplayTrades(archiveTrades),
+    [archiveTrades],
   );
+  const filteredTrades = useMemo(
+    () => selectedDate === STARRED_TRADE_FILTER
+      ? starredTrades
+      : filterTradesByCloseDate(archiveTrades, selectedDate),
+    [archiveTrades, selectedDate, starredTrades],
+  );
+  const contextMenuTrade = tradeContextMenu
+    ? archiveTrades.find((item) => item.id === tradeContextMenu.tradeId) ?? null
+    : null;
   const cursor = replayFrame.cursor;
   const candlePhase = replayFrame.phase;
   const replayMarketDataKey = buildReplayMarketDataKey(trade, frame);
@@ -1666,7 +1687,16 @@ export function TradeReplay() {
   }, [profileDialogOpen]);
 
   useEffect(() => {
-    if (selectedDate && !closeDateGroups.some((group) => group.date === selectedDate)) {
+    if (
+      selectedDate &&
+      selectedDate !== STARRED_TRADE_FILTER &&
+      !closeDateGroups.some((group) => group.date === selectedDate)
+    ) {
+      setSelectedDate(null);
+      return;
+    }
+
+    if (selectedDate === STARRED_TRADE_FILTER && starredTrades.length === 0) {
       setSelectedDate(null);
       return;
     }
@@ -1675,6 +1705,11 @@ export function TradeReplay() {
       filteredTrades.length > 0 &&
       !filteredTrades.some((item) => item.id === selectedId)
     ) {
+      if (selectedDate === STARRED_TRADE_FILTER) {
+        setSelectedId(filteredTrades[0].id);
+        setPlaying(false);
+        return;
+      }
       if (
         selectedDate !== null &&
         archiveTrades.some((item) => item.id === selectedId)
@@ -1685,7 +1720,21 @@ export function TradeReplay() {
       setSelectedId(filteredTrades[0].id);
       setPlaying(false);
     }
-  }, [archiveTrades, closeDateGroups, filteredTrades, selectedDate, selectedId]);
+  }, [archiveTrades, closeDateGroups, filteredTrades, selectedDate, selectedId, starredTrades]);
+
+  useEffect(() => {
+    if (!tradeContextMenu) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTradeContextMenu(null);
+    };
+    const handleBlur = () => setTradeContextMenu(null);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [tradeContextMenu]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2304,19 +2353,48 @@ export function TradeReplay() {
   const latestVisibleExit = visibleExits.at(-1);
 
   const selectTrade = (id: string) => {
+    setTradeContextMenu(null);
     setSelectedId(id);
     setPlaying(false);
   };
 
   const selectModule = (module: ActiveModule) => {
+    setTradeContextMenu(null);
     setActiveModule(module);
     if (module !== "replay") setPlaying(false);
   };
 
   const selectCloseDate = (date: string | null) => {
+    setTradeContextMenu(null);
     setSelectedDate(date);
-    const firstTrade = filterTradesByCloseDate(archiveTrades, date)[0];
+    const firstTrade = date === STARRED_TRADE_FILTER
+      ? starredTrades[0]
+      : filterTradesByCloseDate(archiveTrades, date)[0];
     if (firstTrade) selectTrade(firstTrade.id);
+  };
+
+  const openTradeContextMenu = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    targetTrade: ReplayTrade,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setTradeContextMenu({
+      tradeId: targetTrade.id,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 180)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 104)),
+    });
+  };
+
+  const toggleTradeStar = (targetTrade: ReplayTrade) => {
+    const nextTrades = toggleReplayTradeStar(tradesRef.current, targetTrade.id);
+    const nextStarred = targetTrade.starred !== true;
+    tradesRef.current = nextTrades;
+    setTrades(nextTrades);
+    setTradeContextMenu(null);
+    setImportNotice(
+      `${displaySymbol(targetTrade.symbol)} 已${nextStarred ? "加入" : "移出"}星标交易。`,
+    );
   };
 
   const updateActiveChartPreferences = (
@@ -2372,6 +2450,7 @@ export function TradeReplay() {
         ? nextTrades
         : [];
     setActiveProfileId(nextProfile.id);
+    setTradeContextMenu(null);
     setSelectedDate(null);
     setSelectedId(visible[0]?.id ?? DEFAULT_TRADES[0].id);
     setPlaying(false);
@@ -2440,12 +2519,8 @@ export function TradeReplay() {
     }
   };
 
-  const deleteTradeRecord = async (
-    event: ReactMouseEvent<HTMLButtonElement>,
-    targetTrade: ReplayTrade,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
+  const deleteTradeRecord = async (targetTrade: ReplayTrade) => {
+    setTradeContextMenu(null);
     if (deletingTradeId) return;
     if (!targetTrade.id.startsWith("import-")) {
       setImportNotice("内置示例记录不能删除；右键可删除导入或同步生成的订单复盘。");
@@ -3347,7 +3422,7 @@ export function TradeReplay() {
               </button>
             </div>
           </div>
-          <div className="date-filter" role="group" aria-label="按最终平仓日期筛选">
+          <div className="date-filter" role="group" aria-label="按最终平仓日期或星标筛选">
             <button
               className={`date-filter-button ${selectedDate === null ? "active" : ""}`}
               onClick={() => selectCloseDate(null)}
@@ -3355,6 +3430,15 @@ export function TradeReplay() {
             >
               <span className="date-filter-label">全部</span>
               <span className="date-filter-count">{archiveTrades.length}</span>
+            </button>
+            <button
+              className={`date-filter-button ${selectedDate === STARRED_TRADE_FILTER ? "active" : ""}`}
+              onClick={() => selectCloseDate(STARRED_TRADE_FILTER)}
+              aria-pressed={selectedDate === STARRED_TRADE_FILTER}
+              disabled={starredTrades.length === 0}
+            >
+              <span className="date-filter-label">星标</span>
+              <span className="date-filter-count">{starredTrades.length}</span>
             </button>
             {closeDateGroups.map((group) => (
               <button
@@ -3378,11 +3462,11 @@ export function TradeReplay() {
                   key={item.id}
                   className={`trade-list-item ${item.id === trade.id ? "active" : ""}`}
                   onClick={() => selectTrade(item.id)}
-                  onContextMenu={(event) => void deleteTradeRecord(event, item)}
+                  onContextMenu={(event) => openTradeContextMenu(event, item)}
                   role="listitem"
                   aria-current={item.id === trade.id ? "true" : undefined}
                   aria-busy={deletingTradeId === item.id}
-                  title={item.id.startsWith("import-") ? "右键删除这条复盘记录" : "内置示例记录不可删除"}
+                  title="右键打开交易操作菜单"
                 >
                   <div className="trade-list-top">
                     <span className="asset-avatar">{normalizeSymbol(item.symbol).slice(0, 1)}</span>
@@ -3394,6 +3478,14 @@ export function TradeReplay() {
                     >
                       {sourceDisplay.shortLabel}
                     </span>
+                    {item.starred && (
+                      <Star
+                        size={13}
+                        className="trade-star-indicator"
+                        fill="currentColor"
+                        aria-label="已星标"
+                      />
+                    )}
                     <span className={`side-badge ${item.side}`}>
                       {item.side === "long" ? "多" : "空"}
                     </span>
@@ -3889,6 +3981,47 @@ export function TradeReplay() {
           onResultsChange={setTrainingResults}
         />
       </div>
+
+      {tradeContextMenu && contextMenuTrade && (
+        <div
+          className="trade-context-menu-backdrop"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) setTradeContextMenu(null);
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <div
+            className="trade-context-menu"
+            role="menu"
+            aria-label={`${displaySymbol(contextMenuTrade.symbol)} 交易操作`}
+            style={{ left: tradeContextMenu.x, top: tradeContextMenu.y }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              autoFocus
+              onClick={() => toggleTradeStar(contextMenuTrade)}
+            >
+              <Star
+                size={15}
+                fill={contextMenuTrade.starred ? "currentColor" : "none"}
+              />
+              {contextMenuTrade.starred ? "取消星标" : "星标交易"}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              disabled={!contextMenuTrade.id.startsWith("import-") || Boolean(deletingTradeId)}
+              title={contextMenuTrade.id.startsWith("import-") ? undefined : "内置示例记录不可删除"}
+              onClick={() => void deleteTradeRecord(contextMenuTrade)}
+            >
+              <Trash2 size={15} />
+              删除交易
+            </button>
+          </div>
+        </div>
+      )}
 
       <footer className="app-footer">
         <span>CryptoReview · 仅用于交易复盘，不构成投资建议</span>
