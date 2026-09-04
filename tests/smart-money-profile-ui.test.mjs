@@ -13,6 +13,7 @@ test("导入菜单可以通过聪明钱 URL 自动建用户并优先同步最新
   assert.match(replay, /<SmartMoneyImport/);
   assert.match(replay, /handleSmartMoneyImport/);
   assert.match(replay, /syncSmartMoneyLatestRecords/);
+  assert.match(replay, /positions:\s*latestResult\.positions/);
   assert.match(replay, /authorizeSmartMoney/);
   assert.match(replay, /fullHistory:\s*true/);
   assert.match(replay, /source:\s*"smart-money-public"/);
@@ -27,6 +28,7 @@ test("导入菜单可以通过聪明钱 URL 自动建用户并优先同步最新
   assert.match(preload, /desktop:smart-money-sync-latest-records/);
   assert.match(desktopTypes, /authorizeSmartMoney/);
   assert.match(desktopTypes, /syncSmartMoneyLatestRecords/);
+  assert.match(desktopTypes, /positions:\s*SmartMoneyPosition\[\]/);
 });
 
 test("本地接口只读取公开主页资料，不代理需要登录的私有接口", async () => {

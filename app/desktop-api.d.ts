@@ -199,6 +199,17 @@ declare global {
     updateTime: number;
   }
 
+  interface SmartMoneyPosition {
+    symbol: string;
+    positionAmount: number;
+    positionSide: "BOTH" | "LONG" | "SHORT";
+    entryPrice: number;
+    breakEvenPrice: number | null;
+    markPrice: number;
+    unrealizedProfit: number;
+    marginAsset: string;
+  }
+
   type SmartMoneyLatestRecordsResult =
     | {
         authorizationRequired: true;
@@ -210,6 +221,7 @@ declare global {
         startTime: number;
         endTime: number;
         fetchedAt: string;
+        positions: SmartMoneyPosition[];
         records: SmartMoneyLatestRecord[];
         total: number;
         truncated: boolean;

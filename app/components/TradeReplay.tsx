@@ -2829,7 +2829,7 @@ export function TradeReplay() {
           portfolioId: config.portfolioId,
           fetchedAt: latestResult.fetchedAt,
           nickname: smartMoneySource.traderName ?? config.nickname,
-          positions: [],
+          positions: latestResult.positions,
           orderHistory: {
             total: latestResult.total,
             list: latestResult.records,
