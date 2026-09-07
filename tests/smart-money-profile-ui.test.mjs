@@ -23,6 +23,11 @@ test("导入菜单可以通过聪明钱 URL 自动建用户并优先同步共享
     /authorizeSmartMoney:\s*snapshot\.sharingPosition\s*\|\|\s*snapshot\.sharingLatestRecord/,
   );
   assert.match(replay, /authorizeSmartMoney/);
+  assert.match(replay, /syncResult/);
+  assert.match(
+    replay,
+    /authorizeSmartMoney\([\s\S]*includePositions:\s*smartMoneySource\.sharingPosition[\s\S]*includeLatestRecords:\s*smartMoneySource\.sharingLatestRecord/,
+  );
   assert.match(replay, /fullHistory:\s*true/);
   assert.match(replay, /source:\s*"smart-money-public"/);
   assert.match(replay, /hasCompleteSmartMoneyOrderArchive/);
@@ -32,6 +37,7 @@ test("导入菜单可以通过聪明钱 URL 自动建用户并优先同步共享
   assert.match(importer, /创建独立本地用户/);
   assert.match(importer, /smart-money\/profile/);
   assert.match(importer, /最近 30 天/);
+  assert.match(importer, /登录成功后会自动继续同步/);
   assert.match(monitor, /profile\.smartMoneySource\?\.sourceUrl\s*\?\?/);
   assert.match(monitor, /登录并同步聪明钱/);
   assert.match(preload, /desktop:smart-money-authorize/);

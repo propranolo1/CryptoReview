@@ -210,7 +210,7 @@ export function LeadPortfolioMonitor({
                 spellCheck={false}
                 autoComplete="off"
               />
-              <small>支持公开带单或聪明钱主页；聪明钱仓位和操作需要登录 Binance 网页授权。</small>
+              <small>支持公开带单或聪明钱主页；登录成功后会自动继续同步并关闭 Binance 授权窗口。</small>
             </label>
 
             <div className={styles.settingsRow}>

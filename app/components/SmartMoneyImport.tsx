@@ -112,7 +112,7 @@ export function SmartMoneyImport({
                 autoComplete="off"
               />
               <small>
-                软件会打开隔离的 Binance 登录窗口；登录信息仅在本次运行有效，不写入本地数据库。
+                软件会打开隔离的 Binance 登录窗口；登录成功后会自动继续同步并关闭窗口，登录信息仅在本次运行有效。
               </small>
             </label>
 

@@ -8,6 +8,8 @@ const LATEST_RECORD_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 10;
 const POSITION_PAGE_SIZE = 9;
 const MAX_PAGES = 100;
+const AUTHORIZATION_POLL_INTERVAL_MS = 1_000;
+const BINANCE_ISOLATED_WORLD_ID = 1_001;
 
 export function isAllowedBinanceNavigation(targetUrl) {
   try {
@@ -20,6 +22,33 @@ export function isAllowedBinanceNavigation(targetUrl) {
   } catch {
     return false;
   }
+}
+
+function createBinancePageFetchCode(targetUrl) {
+  const serializedUrl = JSON.stringify(String(targetUrl));
+  return `(async () => {
+    const response = await fetch(${serializedUrl}, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      headers: { Accept: "application/json", Clienttype: "web" },
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch {}
+    return { status: response.status, ok: response.ok, payload };
+  })()`;
+}
+
+function isBrowserFetchResult(value) {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    Number.isInteger(value.status) &&
+    value.status >= 100 &&
+    value.status <= 599 &&
+    typeof value.ok === "boolean" &&
+    Object.prototype.hasOwnProperty.call(value, "payload"),
+  );
 }
 
 export function createSmartMoneySessionService({
@@ -41,15 +70,63 @@ export function createSmartMoneySessionService({
   let loginWindow = null;
   let loginPromise = null;
 
-  const authorize = ({ sourceUrl, topTraderId: inputTopTraderId } = {}) => {
+  const fetchBinanceJson = async (url) => {
+    const activeWindow = loginWindow;
+    const contents = activeWindow?.webContents;
+    const currentUrl = contents?.getURL?.() ?? "";
+    if (
+      activeWindow &&
+      !activeWindow.isDestroyed?.() &&
+      isAllowedBinanceNavigation(currentUrl) &&
+      typeof contents.executeJavaScriptInIsolatedWorld === "function"
+    ) {
+      try {
+        const result = await contents.executeJavaScriptInIsolatedWorld(
+          BINANCE_ISOLATED_WORLD_ID,
+          [{ code: createBinancePageFetchCode(url) }],
+        );
+        if (isBrowserFetchResult(result)) return result;
+      } catch {
+        // 页面切换期间执行可能失败，继续使用同一隔离 Session 请求。
+      }
+    }
+
+    const response = await browserSession.fetch(url, {
+      method: "GET",
+      credentials: "include",
+      useSessionCookies: true,
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
+        Clienttype: "web",
+      },
+    });
+    return {
+      status: response.status,
+      ok: response.ok,
+      payload: await response.json().catch(() => null),
+    };
+  };
+
+  const authorize = ({
+    sourceUrl,
+    topTraderId: inputTopTraderId,
+    includePositions: inputIncludePositions = true,
+    includeLatestRecords: inputIncludeLatestRecords = true,
+  } = {}) => {
     const topTraderId = requireTopTraderId(inputTopTraderId ?? sourceUrl);
     const targetUrl = normalizeProfileUrl(sourceUrl, topTraderId);
+    const includePositions = inputIncludePositions !== false;
+    const includeLatestRecords = inputIncludeLatestRecords !== false;
     if (loginWindow && !loginWindow.isDestroyed?.()) {
       loginWindow.focus?.();
       return loginPromise;
     }
 
     loginPromise = new Promise((resolve, reject) => {
+      let authorizationTimer = null;
+      let checkingAuthorization = false;
+      let settled = false;
       const window = new BrowserWindow({
         width: 1280,
         height: 860,
@@ -72,26 +149,75 @@ export function createSmartMoneySessionService({
       const guardNavigation = (event, url) => {
         if (!isAllowedBinanceNavigation(url)) event.preventDefault();
       };
+      const cleanupAuthorizationCheck = () => {
+        if (authorizationTimer !== null) clearTimeout(authorizationTimer);
+        authorizationTimer = null;
+        contents.removeListener?.("did-finish-load", checkAuthorization);
+      };
+      const finishAuthorization = (result) => {
+        if (settled) return;
+        settled = true;
+        cleanupAuthorizationCheck();
+        resolve(result);
+      };
+      const failAuthorization = (error) => {
+        if (settled) return;
+        settled = true;
+        cleanupAuthorizationCheck();
+        reject(error);
+        if (!window.isDestroyed?.()) window.close?.();
+      };
+      const scheduleAuthorizationCheck = () => {
+        if (settled || window.isDestroyed?.() || authorizationTimer !== null) return;
+        authorizationTimer = setTimeout(() => {
+          authorizationTimer = null;
+          void checkAuthorization();
+        }, AUTHORIZATION_POLL_INTERVAL_MS);
+      };
+      const checkAuthorization = async () => {
+        if (settled || window.isDestroyed?.() || checkingAuthorization) return;
+        checkingAuthorization = true;
+        try {
+          const syncResult = await syncLatestRecords({
+            topTraderId,
+            includePositions,
+            includeLatestRecords,
+          });
+          if (!syncResult.authorizationRequired) {
+            finishAuthorization({ completed: true, syncResult });
+            if (!window.isDestroyed?.()) window.close?.();
+            return;
+          }
+        } catch (error) {
+          failAuthorization(error);
+          return;
+        } finally {
+          checkingAuthorization = false;
+        }
+        scheduleAuthorizationCheck();
+      };
       contents.on("will-navigate", guardNavigation);
       contents.on("will-redirect", guardNavigation);
       contents.on("will-attach-webview", (event) => event.preventDefault());
+      contents.on("did-finish-load", checkAuthorization);
       contents.setWindowOpenHandler(() => ({ action: "deny" }));
       window.once("ready-to-show", () => window.show());
       window.once("closed", () => {
         loginWindow = null;
         loginPromise = null;
-        resolve({ completed: true });
+        if (!settled) finishAuthorization({ completed: false });
       });
-      Promise.resolve(window.loadURL(targetUrl)).catch((error) => {
-        loginWindow = null;
-        loginPromise = null;
-        window.destroy?.();
-        reject(new Error(
-          error instanceof Error && error.message
-            ? `Binance 登录页面打开失败：${error.message}`
-            : "Binance 登录页面打开失败。",
-        ));
-      });
+      Promise.resolve(window.loadURL(targetUrl))
+        .then(() => void checkAuthorization())
+        .catch((error) => {
+          loginWindow = null;
+          loginPromise = null;
+          failAuthorization(new Error(
+            error instanceof Error && error.message
+              ? `Binance 登录页面打开失败：${error.message}`
+              : "Binance 登录页面打开失败。",
+          ));
+        });
     });
     return loginPromise;
   };
@@ -122,17 +248,7 @@ export function createSmartMoneySessionService({
         url.searchParams.set("marketType", "UM");
         url.searchParams.set("rows", String(POSITION_PAGE_SIZE));
         url.searchParams.set("page", String(positionPage));
-        const response = await browserSession.fetch(url.toString(), {
-          method: "GET",
-          credentials: "include",
-          useSessionCookies: true,
-          headers: {
-            Accept: "application/json",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
-            Clienttype: "web",
-            Referer: profileUrl(topTraderId),
-          },
-        });
+        const response = await fetchBinanceJson(url.toString());
 
         if (response.status === 401 || response.status === 403) {
           return authorizationRequiredResult();
@@ -140,7 +256,7 @@ export function createSmartMoneySessionService({
         if (!response.ok) {
           throw new Error(`Binance 当前仓位接口返回 ${response.status}，请稍后重试。`);
         }
-        const payload = await response.json().catch(() => null);
+        const payload = response.payload;
         if (isAuthorizationPayload(payload)) return authorizationRequiredResult();
         if (isFailedPayload(payload)) {
           throw new Error(formatBinanceMessage(payload));
@@ -164,17 +280,7 @@ export function createSmartMoneySessionService({
         url.searchParams.set("endTime", String(endTime));
         url.searchParams.set("rows", String(PAGE_SIZE));
         url.searchParams.set("page", String(page));
-        const response = await browserSession.fetch(url.toString(), {
-          method: "GET",
-          credentials: "include",
-          useSessionCookies: true,
-          headers: {
-            Accept: "application/json",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
-            Clienttype: "web",
-            Referer: profileUrl(topTraderId),
-          },
-        });
+        const response = await fetchBinanceJson(url.toString());
 
         if (response.status === 401 || response.status === 403) {
           return authorizationRequiredResult();
@@ -182,7 +288,7 @@ export function createSmartMoneySessionService({
         if (!response.ok) {
           throw new Error(`Binance 最新操作记录接口返回 ${response.status}，请稍后重试。`);
         }
-        const payload = await response.json().catch(() => null);
+        const payload = response.payload;
         if (isAuthorizationPayload(payload)) return authorizationRequiredResult();
         if (isFailedPayload(payload)) {
           throw new Error(formatBinanceMessage(payload));

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import {
@@ -7,6 +8,44 @@ import {
 } from "../desktop/smart-money-session.mjs";
 
 const TOP_TRADER_ID = "5146419622540980737";
+
+class FakeLoginWindow extends EventEmitter {
+  static current = null;
+
+  constructor() {
+    super();
+    this.closeCalls = 0;
+    this.destroyed = false;
+    this.url = "";
+    this.webContents = new EventEmitter();
+    this.webContents.getURL = () => this.url;
+    this.webContents.setWindowOpenHandler = () => {};
+    FakeLoginWindow.current = this;
+  }
+
+  async loadURL(url) {
+    this.url = url;
+  }
+
+  show() {}
+
+  focus() {}
+
+  isDestroyed() {
+    return this.destroyed;
+  }
+
+  close() {
+    if (this.destroyed) return;
+    this.closeCalls += 1;
+    this.destroyed = true;
+    this.emit("closed");
+  }
+
+  destroy() {
+    this.close();
+  }
+}
 
 test("聪明钱网页登录会话只允许 Binance HTTPS 页面", () => {
   assert.equal(
@@ -203,4 +242,76 @@ test("未登录或登录失效时返回明确授权状态，不把 Binance 原�
     message: "需要先在 Binance 登录窗口完成登录。",
   });
   assert.doesNotMatch(JSON.stringify(result), /private payload/);
+});
+
+test("登录页验证成功后自动完成授权并复用窗口内取得的同步结果", async () => {
+  const browserSession = {
+    fetch: async () => {
+      throw new Error("登录窗口关闭后无法继续读取会话");
+    },
+  };
+  const service = createSmartMoneySessionService({
+    browserSession,
+    BrowserWindow: FakeLoginWindow,
+    now: () => 1_788_000_000_000,
+  });
+  const authorization = service.authorize({
+    sourceUrl: `https://www.binance.com/zh-CN/smart-money/profile/${TOP_TRADER_ID}`,
+    topTraderId: TOP_TRADER_ID,
+    includePositions: true,
+    includeLatestRecords: false,
+  });
+  const window = FakeLoginWindow.current;
+  let isolatedFetchCalls = 0;
+  window.webContents.executeJavaScriptInIsolatedWorld = async () => {
+    isolatedFetchCalls += 1;
+    return {
+      status: 200,
+      ok: true,
+      payload: {
+        success: true,
+        data: {
+          data: [{
+            symbol: "BTCUSDT",
+            side: "SHORT",
+            amount: "0.02",
+            entryPrice: "108000",
+            markPrice: "107500",
+          }],
+        },
+      },
+    };
+  };
+
+  window.webContents.emit("did-finish-load");
+  const fallbackClose = setTimeout(() => window.close(), 50);
+  const result = await authorization;
+  clearTimeout(fallbackClose);
+
+  assert.equal(result.completed, true);
+  assert.equal(result.syncResult.authorizationRequired, false);
+  assert.equal(result.syncResult.positions.length, 1);
+  assert.equal(result.syncResult.positions[0].positionSide, "SHORT");
+  assert.equal(isolatedFetchCalls, 1);
+  assert.equal(window.closeCalls, 1);
+});
+
+test("登录完成前手动关闭窗口会返回取消状态", async () => {
+  const service = createSmartMoneySessionService({
+    browserSession: {
+      fetch: async () => new Response("private payload", { status: 401 }),
+    },
+    BrowserWindow: FakeLoginWindow,
+    now: () => 1_788_000_000_000,
+  });
+  const authorization = service.authorize({
+    sourceUrl: `https://www.binance.com/zh-CN/smart-money/profile/${TOP_TRADER_ID}`,
+    topTraderId: TOP_TRADER_ID,
+    includePositions: true,
+    includeLatestRecords: false,
+  });
+
+  FakeLoginWindow.current.close();
+
+  assert.deepEqual(await authorization, { completed: false });
 });

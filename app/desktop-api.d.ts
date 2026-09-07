@@ -228,6 +228,13 @@ declare global {
         warnings: string[];
       };
 
+  type SmartMoneyAuthorizationResult =
+    | { completed: false }
+    | {
+        completed: true;
+        syncResult: SmartMoneyLatestRecordsResult;
+      };
+
   interface VideoExportBeginResult {
     canceled: boolean;
     exportId?: string;
@@ -295,7 +302,9 @@ declare global {
     authorizeSmartMoney(options: {
       sourceUrl: string;
       topTraderId: string;
-    }): Promise<{ completed: true }>;
+      includePositions: boolean;
+      includeLatestRecords: boolean;
+    }): Promise<SmartMoneyAuthorizationResult>;
     syncSmartMoneyLatestRecords(options: {
       topTraderId: string;
       includePositions: boolean;

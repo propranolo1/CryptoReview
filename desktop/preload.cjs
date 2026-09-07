@@ -118,6 +118,8 @@ contextBridge.exposeInMainWorld("cryptoReviewDesktop", Object.freeze({
     return ipcRenderer.invoke("desktop:smart-money-authorize", {
       sourceUrl: requireString(value.sourceUrl, "聪明钱主页链接"),
       topTraderId: requireString(value.topTraderId, "聪明钱主页 ID"),
+      includePositions: value.includePositions !== false,
+      includeLatestRecords: value.includeLatestRecords !== false,
     });
   },
   syncSmartMoneyLatestRecords: (options) => {

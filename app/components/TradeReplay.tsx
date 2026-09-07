@@ -2887,17 +2887,18 @@ export function TradeReplay() {
         });
         if (latestResult.authorizationRequired && options.authorizeSmartMoney) {
           setImportNotice(
-            "请在弹出的 Binance 窗口完成登录，回到聪明钱主页后关闭窗口，软件会继续同步。",
+            "请在弹出的 Binance 窗口完成登录；登录成功后软件会自动读取并关闭窗口。",
           );
-          await desktopApi.authorizeSmartMoney({
+          const authorization = await desktopApi.authorizeSmartMoney({
             sourceUrl: smartMoneySource.sourceUrl,
-            topTraderId: smartMoneySource.topTraderId,
-          });
-          latestResult = await desktopApi.syncSmartMoneyLatestRecords({
             topTraderId: smartMoneySource.topTraderId,
             includePositions: smartMoneySource.sharingPosition,
             includeLatestRecords: smartMoneySource.sharingLatestRecord,
           });
+          if (!authorization.completed) {
+            throw new Error("Binance 登录窗口已关闭，本次同步已取消。");
+          }
+          latestResult = authorization.syncResult;
         }
         if (latestResult.authorizationRequired) {
           throw new Error(
