@@ -17,6 +17,7 @@ import {
   buildReplayOrderFlowSeries,
   buildVolumeCandleColorPoint,
 } from "@/lib/indicators.mjs";
+import { buildReplayTradeMarkers } from "@/lib/replay-markers.mjs";
 import {
   getReplayPriceLines,
   type ReplayRiskLevel,
@@ -795,25 +796,16 @@ function drawTradeMarkers(
 ) {
   if (!state.hasEntered) return;
 
-  const stackCountByCandleAndSide = new Map<string, number>();
-  state.tradeSnapshot.events.forEach((event) => {
-    if (event.timeMs > state.replayTimeMs) return;
-    const index = locateCandleByMilliseconds(chartCandles, event.timeMs);
+  buildReplayTradeMarkers(chartCandles, state.tradeSnapshot.events, state.replayTimeMs).forEach((marker) => {
+    const index = marker.index;
     if (index < chartStartIndex || index > chartCursor) return;
-    const stackKey = `${index}:${event.side}`;
-    const stackIndex = stackCountByCandleAndSide.get(stackKey) ?? 0;
-    stackCountByCandleAndSide.set(stackKey, stackIndex + 1);
-    const horizontalOffsets = [0, -10, 10];
-    const horizontalOffset = horizontalOffsets[stackIndex % horizontalOffsets.length];
-    const verticalStack = Math.floor(stackIndex / horizontalOffsets.length);
-    const isBuy = event.side === "buy";
+    const isBuy = marker.side === "buy";
     drawTradeArrow(
       context,
-      xAt(index - chartStartIndex) + horizontalOffset,
-      priceY(event.price),
-      isBuy ? "BUY" : "SELL",
+      xAt(index - chartStartIndex),
+      priceY(marker.price),
+      `${isBuy ? "BUY" : "SELL"}${marker.text ? ` ${marker.text}` : ""}`,
       isBuy,
-      verticalStack,
     );
   });
 }
@@ -822,15 +814,13 @@ function drawTradeArrow(
   context: CanvasRenderingContext2D,
   x: number,
   priceY: number,
-  label: "BUY" | "SELL",
+  label: string,
   pointsUp: boolean,
-  stackIndex = 0,
 ) {
   const color = pointsUp ? COLORS.green : COLORS.red;
-  const stackOffset = stackIndex * 24;
   const y = pointsUp
-    ? priceY + 31 + stackOffset
-    : priceY - 31 - stackOffset;
+    ? priceY + 31
+    : priceY - 31;
   context.fillStyle = color;
   context.beginPath();
   if (pointsUp) {

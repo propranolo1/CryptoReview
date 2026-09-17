@@ -73,6 +73,8 @@ import {
   createSettlementTrade,
   mergeDefaultAndImportedTrades,
 } from "@/lib/simulation.mjs";
+import { createReplayHistoryLoader, shiftReplayHistoryRange, type ReplayHistoryLoader } from "@/lib/replay-history.mjs";
+import { buildReplayTradeMarkers } from "@/lib/replay-markers.mjs";
 import { createHypeScreenshotTrade } from "@/lib/records.mjs";
 import {
   getReplayPriceLines,
@@ -792,6 +794,7 @@ function CandleReplayChart({
   candlePhase,
   currentCandle,
   entryIndex,
+  chartStartIndex,
   trade,
   indicatorVisibility,
   indicatorPaneOrder,
@@ -800,6 +803,7 @@ function CandleReplayChart({
   playing,
   autoFitRequest,
   onSeekToTime,
+  onLoadEarlier,
 }: {
   candles: Candle[];
   openInterest: OpenInterestPoint[];
@@ -807,6 +811,7 @@ function CandleReplayChart({
   candlePhase: number;
   currentCandle: Candle | undefined;
   entryIndex: number;
+  chartStartIndex: number;
   trade: ReplayTrade;
   indicatorVisibility: IndicatorVisibility;
   indicatorPaneOrder: IndicatorPaneKey[];
@@ -815,6 +820,7 @@ function CandleReplayChart({
   playing: boolean;
   autoFitRequest: number;
   onSeekToTime: (timeMs: number) => void;
+  onLoadEarlier: (visibleBars: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -834,16 +840,24 @@ function CandleReplayChart({
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const priceLineKeyRef = useRef("");
   const renderedCursorRef = useRef(-1);
+  const renderedChartLengthRef = useRef(0);
   const dataKeyRef = useRef("");
   const openInterestDataKeyRef = useRef("");
   const [ready, setReady] = useState(false);
   const showOpenInterest = indicatorVisibility.openInterest && openInterest.length > 0;
   const showOrderFlow = orderFlowAvailable;
   const onSeekToTimeRef = useRef(onSeekToTime);
+  const onLoadEarlierRef = useRef(onLoadEarlier);
+  const chartFirstTimeRef = useRef<number | null>(null);
+  const checkHistoryRangeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     onSeekToTimeRef.current = onSeekToTime;
   }, [onSeekToTime]);
+
+  useEffect(() => {
+    onLoadEarlierRef.current = onLoadEarlier;
+  }, [onLoadEarlier]);
 
   useEffect(() => {
     let disposed = false;
@@ -851,6 +865,18 @@ function CandleReplayChart({
     let chart: IChartApi | null = null;
     let chartContainer: HTMLDivElement | null = null;
     let handleDoubleClick: ((event: MouseEvent) => void) | null = null;
+    let historyTimer: ReturnType<typeof setTimeout> | undefined;
+    let historyInteraction = false;
+    const handleHistoryInteraction = () => { historyInteraction = true; };
+    const checkHistoryRange = () => {
+      clearTimeout(historyTimer);
+      historyTimer = setTimeout(() => {
+        const range = chart?.timeScale().getVisibleLogicalRange();
+        if (!disposed && historyInteraction && range && range.from <= 20) {
+          onLoadEarlierRef.current(range.to - range.from);
+        }
+      }, 150);
+    };
 
     void (async () => {
       const library = await import("lightweight-charts");
@@ -895,7 +921,7 @@ function CandleReplayChart({
           rightOffset: 8,
           barSpacing: 8,
           minBarSpacing: 3,
-          fixLeftEdge: true,
+          fixLeftEdge: false,
         },
         handleScroll: { vertTouchDrag: false },
         localization: {
@@ -1129,6 +1155,10 @@ function CandleReplayChart({
       deltaSeriesRef.current = deltaSeries;
       cvdSeriesRef.current = cvdSeries;
       markersRef.current = markers;
+      containerRef.current.addEventListener("pointerdown", handleHistoryInteraction, { passive: true });
+      containerRef.current.addEventListener("wheel", handleHistoryInteraction, { passive: true });
+      chart.timeScale().subscribeVisibleLogicalRangeChange(checkHistoryRange);
+      checkHistoryRangeRef.current = checkHistoryRange;
       resizeObserver = new ResizeObserver(() => {
         if (containerRef.current && chart) {
           chart.applyOptions({ width: containerRef.current.clientWidth });
@@ -1140,6 +1170,12 @@ function CandleReplayChart({
 
     return () => {
       disposed = true;
+      clearTimeout(historyTimer);
+      chartContainer?.removeEventListener("pointerdown", handleHistoryInteraction);
+      chartContainer?.removeEventListener("wheel", handleHistoryInteraction);
+      chart?.timeScale().unsubscribeVisibleLogicalRangeChange(checkHistoryRange);
+      checkHistoryRangeRef.current = null;
+      chartFirstTimeRef.current = null;
       if (chartContainer && handleDoubleClick) {
         chartContainer.removeEventListener("dblclick", handleDoubleClick);
       }
@@ -1162,6 +1198,7 @@ function CandleReplayChart({
       priceLinesRef.current = [];
       priceLineKeyRef.current = "";
       renderedCursorRef.current = -1;
+      renderedChartLengthRef.current = 0;
       dataKeyRef.current = "";
       openInterestDataKeyRef.current = "";
     };
@@ -1234,7 +1271,7 @@ function CandleReplayChart({
     const volumeColoringKey = indicatorVisibility.volumeColoring
       ? `${volumeColoringConfig.rvolPeriod}:${volumeColoringConfig.lookback}`
       : "off";
-    const dataKey = `${candles[0].time}:${candles.length}:${trade.id}:${volumeColoringKey}`;
+    const dataKey = `${candles[0].time}:${candles.length}:${chartStartIndex}:${trade.id}:${volumeColoringKey}`;
     const currentReplayVolume = getReplayVolume(candles[safeCursor].volume, candlePhase);
     const volumeColorPoints = indicatorVisibility.volumeColoring
       ? buildVolumeCandleColorSeries(
@@ -1283,8 +1320,16 @@ function CandleReplayChart({
       color: volumeColor,
     };
     const previousCursor = renderedCursorRef.current;
-    const chartStartIndex = Math.max(0, entryIndex - CHART_PRE_ENTRY_CANDLES);
+    const previousRange = chart.timeScale().getVisibleLogicalRange();
+    const followingLatest = previousRange !== null && previousRange.to >= renderedChartLengthRef.current - 1;
     const chartStartTime = candles[chartStartIndex].time;
+    const previousFirstTime = chartFirstTimeRef.current;
+    const prependedBars = previousFirstTime !== null && chartStartTime < previousFirstTime
+      ? candles.findIndex((candle) => candle.time === previousFirstTime) - chartStartIndex
+      : 0;
+    const preservedRange = prependedBars > 0
+      ? shiftReplayHistoryRange(previousRange, prependedBars)
+      : null;
     const ema21Data = buildReplayEmaSeries(candles, safeCursor, currentCandle.close, 21)
       .filter((point) => point.time >= chartStartTime)
       .map((point) => ({ time: point.time as UTCTimestamp, value: point.value }));
@@ -1471,55 +1516,41 @@ function CandleReplayChart({
       }
     }
 
-    const markers: SeriesMarker<Time>[] = [];
-    replaySnapshot.visibleEntries.forEach((entry, index) => {
-      const entryMs = timeValue(entry.entryTime);
-      if (entryMs === null) return;
-      const visibleEntryIndex = locateCandle(candles, entryMs);
-      const entryIsBuy = trade.side === "long";
-      markers.push({
-        id: `entry-${trade.id}-${index}`,
-        time: candles[visibleEntryIndex].time as UTCTimestamp,
-        position: entryIsBuy ? "belowBar" : "aboveBar",
-        color: entryIsBuy ? "#30c487" : "#ef6572",
-        shape: entryIsBuy ? "arrowUp" : "arrowDown",
+    const markers: SeriesMarker<Time>[] = buildReplayTradeMarkers(
+      candles, replaySnapshot.events, replayTimeMs,
+    ).filter((marker) => marker.index >= chartStartIndex && marker.index <= safeCursor)
+      .map((marker) => ({
+        id: `${trade.id}:${marker.time}:${marker.side}`,
+        time: marker.time as UTCTimestamp,
+        position: marker.side === "buy" ? "belowBar" : "aboveBar",
+        color: marker.side === "buy" ? "#30c487" : "#ef6572",
+        shape: marker.side === "buy" ? "arrowUp" : "arrowDown",
+        text: marker.text,
         size: 1.5,
-      });
-    });
-
-    replaySnapshot.visibleExits.forEach((exit, index) => {
-      const exitMs = timeValue(exit.exitTime);
-      if (exitMs === null) return;
-      const exitIndex = locateCandle(candles, exitMs);
-      const exitIsBuy = trade.side === "short";
-      markers.push({
-        id: `exit-${trade.id}-${index}`,
-        time: candles[exitIndex].time as UTCTimestamp,
-        position: exitIsBuy ? "belowBar" : "aboveBar",
-        color: exitIsBuy ? "#30c487" : "#ef6572",
-        shape: exitIsBuy ? "arrowUp" : "arrowDown",
-        size: 1.5,
-      });
-    });
-
-    markers.sort((a, b) => Number(a.time) - Number(b.time));
+      }));
     markerApi.setMarkers(markers);
 
     if (playing) {
       series.priceScale().applyOptions({ autoScale: true });
     }
 
-    if (safeCursor <= entryIndex || previousCursor < 0) {
+    if (preservedRange) {
+      chart.timeScale().setVisibleLogicalRange(preservedRange);
+    } else if (previousCursor < 0) {
       chart.timeScale().fitContent();
-    } else if (previousCursor !== safeCursor) {
+    } else if (previousCursor !== safeCursor && prependedBars === 0 && (!playing || followingLatest)) {
       chart.timeScale().scrollToRealTime();
     }
+    chartFirstTimeRef.current = chartStartTime;
+    renderedChartLengthRef.current = safeCursor - chartStartIndex + 1;
+    if (prependedBars > 0) checkHistoryRangeRef.current?.();
   }, [
     candlePhase,
     candles,
     currentCandle,
     cursor,
     entryIndex,
+    chartStartIndex,
     indicatorVisibility.volumeColoring,
     openInterest,
     playing,
@@ -1560,6 +1591,11 @@ export function TradeReplay() {
   const [openInterestNotice, setOpenInterestNotice] = useState("");
   const [replayFrame, setReplayFrame] = useState({ cursor: 0, phase: 0 });
   const [entryIndex, setEntryIndex] = useState(0);
+  const [chartStartIndex, setChartStartIndex] = useState(0);
+  const [historyStatus, setHistoryStatus] = useState<"idle" | "loading" | "end" | "error">("idle");
+  const [historyError, setHistoryError] = useState("");
+  const historyLoaderRef = useRef<ReplayHistoryLoader | null>(null);
+  const historyLoadingRef = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [autoFitRequest, setAutoFitRequest] = useState(0);
@@ -2008,6 +2044,14 @@ export function TradeReplay() {
       : null;
     pendingTimeframeReplayRef.current = null;
     const controller = new AbortController();
+    const historyLoader = createReplayHistoryLoader({
+      symbol: normalizeSymbol(trade.symbol), interval: frame,
+      market: trade.marketDataSource ?? "binance", fetchImpl: fetch,
+    });
+    historyLoaderRef.current = historyLoader;
+    historyLoadingRef.current = false;
+    setHistoryStatus("idle");
+    setHistoryError("");
     const entryMs = timeValue(trade.entryTime) ?? Date.now();
     const intervalMs = FRAME_MS[frame];
     const lastExitMs = trade.exits
@@ -2043,6 +2087,7 @@ export function TradeReplay() {
     setOpenInterestStatus(trade.marketDataSource === "binance-futures" ? "loading" : "idle");
     setOpenInterestNotice("");
     setEntryIndex(0);
+    setChartStartIndex(0);
     setReplayFrame({ cursor: 0, phase: 0 });
     setLoading(true);
     setSource("正在获取行情");
@@ -2064,6 +2109,7 @@ export function TradeReplay() {
           )
           .sort((a, b) => a.time - b.time)
           .filter((candle, index, list) => index === 0 || candle.time !== list[index - 1].time);
+        if (controller.signal.aborted) return;
         if (cleanCandles.length < 5) throw new Error("行情数据格式异常");
         const nextEntryIndex = locateCandle(cleanCandles, entryMs);
         const nextEntryPhase = getCandlePhaseAtTime(
@@ -2080,6 +2126,7 @@ export function TradeReplay() {
           : { cursor: nextEntryIndex, phase: nextEntryPhase };
         setCandles(cleanCandles);
         setEntryIndex(nextEntryIndex);
+        setChartStartIndex(Math.max(0, nextEntryIndex - CHART_PRE_ENTRY_CANDLES));
         setReplayFrame(restoredFrame);
         setPlaying(Boolean(replayToRestore?.playing));
         setSource(payload.source || "Binance Spot");
@@ -2146,6 +2193,7 @@ export function TradeReplay() {
           : { cursor: nextEntryIndex, phase: nextEntryPhase };
         setCandles(demoCandles);
         setEntryIndex(nextEntryIndex);
+        setChartStartIndex(Math.max(0, nextEntryIndex - CHART_PRE_ENTRY_CANDLES));
         setReplayFrame(restoredFrame);
         setPlaying(Boolean(replayToRestore?.playing));
         setSource("演示行情");
@@ -2162,10 +2210,41 @@ export function TradeReplay() {
         if (!controller.signal.aborted) setLoading(false);
       });
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      historyLoader.cancel();
+      if (historyLoaderRef.current === historyLoader) historyLoaderRef.current = null;
+    };
   // 自动同步会重建相同的 trade/exits 对象；只在行情请求的语义数据变化时重载，
   // 避免播放中的游标被轮询意外重置到入场点。
   }, [replayMarketDataKey]);
+
+  const loadEarlierHistory = useCallback(async (visibleBars = CHART_PRE_ENTRY_CANDLES, retry = false) => {
+    const historyLoader = historyLoaderRef.current;
+    if (!historyLoader || loading || source === "演示行情" || historyLoadingRef.current ||
+      historyStatus === "end" || (historyStatus === "error" && !retry) || !candles.length) return;
+    historyLoadingRef.current = true;
+    setHistoryStatus("loading");
+    setHistoryError("");
+    try {
+      const result = await historyLoader.load(candles, visibleBars);
+      if (!result || historyLoaderRef.current !== historyLoader) return;
+      if (result.addedCount > 0) {
+        setCandles(result.candles);
+        setEntryIndex((current) => current + result.addedCount);
+        setReplayFrame((current) => ({ ...current, cursor: current.cursor + result.addedCount }));
+      }
+      // 到达真实历史起点后，把原来仅用于指标预热的部分也开放查看。
+      if (result.exhausted) setChartStartIndex(0);
+      setHistoryStatus(result.exhausted ? "end" : "idle");
+    } catch (error) {
+      if (historyLoaderRef.current !== historyLoader) return;
+      setHistoryStatus("error");
+      setHistoryError(error instanceof Error ? error.message : "更早的历史行情加载失败");
+    } finally {
+      if (historyLoaderRef.current === historyLoader) historyLoadingRef.current = false;
+    }
+  }, [candles, historyStatus, loading, source]);
 
   const replayStartPhase = useMemo(() => {
     const entryMs = timeValue(trade.entryTime);
@@ -2314,14 +2393,13 @@ export function TradeReplay() {
     if (!orderFlowAvailable || candles.length === 0) {
       return { available: false, delta: [], cvd: [] };
     }
-    const chartStartIndex = Math.max(0, entryIndex - CHART_PRE_ENTRY_CANDLES);
     const safeCursor = Math.min(Math.max(cursor, chartStartIndex), candles.length - 1);
     return buildReplayOrderFlowSeries(
       candles.slice(chartStartIndex),
       safeCursor - chartStartIndex,
       candlePhase,
     );
-  }, [candlePhase, candles, cursor, entryIndex, orderFlowAvailable]);
+  }, [candlePhase, candles, cursor, chartStartIndex, orderFlowAvailable]);
   const currentDelta = currentOrderFlow.delta.at(-1)?.value;
   const currentCvd = currentOrderFlow.cvd.at(-1)?.value;
   const currentXin = useMemo(
@@ -3815,6 +3893,8 @@ export function TradeReplay() {
                 currentCandle={currentCandle}
                 entryIndex={entryIndex}
                 trade={trade}
+                chartStartIndex={chartStartIndex}
+                onLoadEarlier={loadEarlierHistory}
                 indicatorVisibility={indicatorVisibility}
                 indicatorPaneOrder={indicatorPaneOrder}
                 volumeColoringConfig={volumeColoringConfig}
@@ -3824,6 +3904,13 @@ export function TradeReplay() {
                 onSeekToTime={seekReplayToTime}
               />
               {loading && <div className="chart-loading"><span />正在载入历史行情</div>}
+              {historyStatus !== "idle" && (
+                <div className="chart-history-status" role="status">
+                  {historyStatus === "loading" && "正在加载更早行情…"}
+                  {historyStatus === "end" && "已到最早可用行情"}
+                  {historyStatus === "error" && <>{historyError} <button type="button" onClick={() => void loadEarlierHistory(CHART_PRE_ENTRY_CANDLES, true)}>重试加载历史</button></>}
+                </div>
+              )}
               <div className="chart-legend">
                 <span><i className="legend-cost" />成本</span>
                 {indicatorVisibility.ema21 && <span><i className="legend-ema21" />EMA21</span>}

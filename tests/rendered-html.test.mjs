@@ -122,10 +122,9 @@ test("交易切换、平仓日期筛选与独立表现模块均保留回归锚�
   assert.equal(component.match(/<PerformanceOverview\b/g)?.length, 1);
   assert.match(component, /<CandleReplayChart\s+key=\{`\$\{trade\.id\}:\$\{frame\}:/);
   assert.match(component, /setCandles\(\[\]\)/);
-  assert.match(component, /entryIsBuy\s*=\s*trade\.side === "long"/);
-  assert.match(component, /position:\s*entryIsBuy \? "belowBar" : "aboveBar"/);
-  assert.match(component, /exitIsBuy\s*=\s*trade\.side === "short"/);
-  assert.match(component, /position:\s*exitIsBuy \? "belowBar" : "aboveBar"/);
+  assert.match(component, /buildReplayTradeMarkers/);
+  assert.match(component, /position:\s*marker\.side === "buy" \? "belowBar" : "aboveBar"/);
+  assert.match(component, /shape:\s*marker\.side === "buy" \? "arrowUp" : "arrowDown"/);
   assert.doesNotMatch(component, /position:\s*"atPriceMiddle"/);
   assert.doesNotMatch(component, /price:\s*trade\.entryPrice/);
   assert.doesNotMatch(component, /price:\s*exit\.exitPrice/);
@@ -374,9 +373,9 @@ test("分批加仓只在成交后更新 BUY SELL 箭头、成本线与实时盈�
     component,
     /buildReplayTradeSnapshot\(\s*trade,\s*replayTimeMs,\s*currentCandle\.close,?\s*\)/s,
   );
-  assert.match(component, /replaySnapshot\.visibleEntries\.forEach/);
-  assert.match(component, /entry\.entryTime/);
-  assert.match(component, /id:\s*`entry-\$\{trade\.id\}-\$\{index\}`/);
+  assert.match(component, /buildReplayTradeMarkers\(\s*candles, replaySnapshot\.events, replayTimeMs/);
+  assert.match(component, /text: marker\.text/);
+  assert.match(component, /id:\s*`\$\{trade\.id\}:\$\{marker\.time\}:\$\{marker\.side\}`/);
   assert.doesNotMatch(
     component,
     /if \(safeCursor >= entryIndex && candles\[entryIndex\]\)/,
