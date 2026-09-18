@@ -65,20 +65,20 @@
   padding: 14px 15px;
 }
 
-.metrics span,
-.metrics small {
+.metrics article > span,
+.metrics article > small {
   display: block;
   color: var(--muted);
 }
 
-.metrics span {
+.metrics article > span {
   margin-bottom: 8px;
   font-size: 10px;
   font-weight: 650;
   letter-spacing: 0.03em;
 }
 
-.metrics strong {
+.metrics article > strong {
   display: block;
   overflow: hidden;
   color: var(--text);
@@ -90,14 +90,61 @@
   font-variant-numeric: tabular-nums;
 }
 
-.metrics small {
-  overflow: hidden;
+.metrics article > small {
+  min-height: 26px;
   margin-top: 7px;
   font-size: 9px;
   line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
+
+.metricSparkline {
+  display: block;
+  width: 100%;
+  height: 64px;
+  margin-top: 8px;
+}
+
+.metricProfitArea { fill: var(--profit); opacity: 0.12; }
+.metricLossArea { fill: var(--loss); opacity: 0.12; }
+
+.metricVisual {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 64px;
+  margin-top: 8px;
+}
+
+.winRing { width: 64px; height: 64px; flex: 0 0 auto; transform: rotate(-90deg); }
+.winRing circle { fill: none; stroke-width: 7; }
+.ringTrack { stroke: var(--progress-rest); }
+.ringWin { stroke: var(--profit); }
+.ringLoss { stroke: var(--loss); }
+
+.metricLegend { flex: 1; max-width: 140px; }
+.metricLegend p, .feeVisual p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 5px 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+.metricLegend b, .feeVisual b { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
+.metricLegend i { width: 6px; height: 6px; border-radius: 50%; }
+.winSwatch { background: var(--profit); }
+.lossSwatch { background: var(--loss); }
+.flatSwatch { background: var(--progress-rest); }
+
+.comparisonBars { display: grid; align-content: center; gap: 13px; min-height: 64px; margin-top: 8px; }
+.comparisonBars > div { display: flex; align-items: center; gap: 10px; }
+.comparisonBars label { flex: 0 0 auto; color: var(--muted); font-size: 9px; }
+.metricTrack { flex: 1; height: 7px; background: var(--track-bg); border-radius: 8px; overflow: hidden; }
+.metricTrack i { display: block; height: 100%; border-radius: inherit; }
+.feeVisual { display: grid; align-content: center; gap: 5px; min-height: 64px; margin-top: 8px; }
+.feeVisual p { font-size: 9px; margin: 0; }
+.feeFill { background: var(--amber); }
 
 .profit {
   color: var(--profit) !important;
@@ -313,8 +360,9 @@
 
 .calendarCard {
   overflow: visible;
+  width: min(100%, 860px);
   margin-top: 12px;
-  padding-bottom: 14px;
+  padding: 12px;
 }
 
 .calendarLegend {
@@ -396,8 +444,8 @@
 .calendarMonths {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .calendarMonth {
@@ -405,7 +453,7 @@
   border: 1px solid var(--border-soft);
   border-radius: 9px;
   background: var(--card-overlay-soft);
-  padding: 11px;
+  padding: 7px;
 }
 
 .calendarMonth h3 {
@@ -420,7 +468,7 @@
 .calendarGrid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 5px;
+  gap: 4px;
 }
 
 .calendarWeekdays {
@@ -436,7 +484,7 @@
 .calendarDay,
 .calendarBlank {
   min-width: 0;
-  min-height: 52px;
+  min-height: 38px;
 }
 
 .calendarDay {
@@ -448,8 +496,8 @@
   gap: 3px;
   outline: none;
   border: 1px solid var(--border-soft);
-  border-radius: 7px;
-  padding: 6px;
+  border-radius: 5px;
+  padding: 4px 6px;
   background: var(--panel-soft);
   cursor: default;
   font-variant-numeric: tabular-nums;
@@ -674,7 +722,7 @@
 
   .calendarDay,
   .calendarBlank {
-    min-height: 45px;
+    min-height: 36px;
   }
 
   .calendarDay {

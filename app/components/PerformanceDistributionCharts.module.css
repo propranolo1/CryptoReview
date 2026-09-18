@@ -57,6 +57,38 @@
   overflow: visible;
 }
 
+.distributionFrame { position: relative; }
+.detailControls { display: flex; flex: 0 0 auto; gap: 3px; }
+.detailControls button {
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  background: var(--control-bg);
+  color: var(--muted);
+  padding: 5px 7px;
+  font-size: 10px;
+  cursor: pointer;
+}
+.detailControls button[aria-pressed="true"] { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); }
+.hitArea { fill: transparent; pointer-events: all; cursor: crosshair; }
+.distributionDatum:hover .hitArea, .distributionDatum:focus-visible .hitArea { fill: var(--amber-soft); }
+.distributionTooltip {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: var(--panel-shadow);
+  color: var(--text);
+  font-size: 10px;
+  pointer-events: none;
+}
+.distributionTooltip strong, .distributionTooltip span { display: block; line-height: 1.6; }
+.distributionTooltip span { color: var(--muted); }
+.distributionNote { margin: 8px 0 0; color: var(--muted); font-size: 9px; }
+.mixedBin { fill: var(--amber); opacity: 0.18; }
+
 .gridLine {
   stroke: rgba(137, 145, 155, 0.1);
   stroke-width: 1;

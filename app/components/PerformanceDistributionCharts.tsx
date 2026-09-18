@@ -1,4 +1,6 @@
-import type { CSSProperties } from "react";
+"use client";
+
+import { useId, useState, type CSSProperties } from "react";
 import styles from "./PerformanceDistributionCharts.module.css";
 
 type ProfitPercentDistributionBin = {
@@ -27,9 +29,9 @@ const PLOT = { left: 66, right: 20, top: 20, bottom: 48 };
 const PLOT_WIDTH = WIDTH - PLOT.left - PLOT.right;
 const PLOT_HEIGHT = HEIGHT - PLOT.top - PLOT.bottom;
 
-function formatPercent(value: number) {
+function formatPercent(value: number, digits = 2) {
   const sign = value < 0 ? "−" : value > 0 ? "+" : "";
-  return `${sign}${Math.abs(value).toFixed(2)}%`;
+  return `${sign}${Math.abs(value).toFixed(digits)}%`;
 }
 
 function formatDuration(value: number | null) {
@@ -52,16 +54,33 @@ function holdingBarStyle(value: number | null, maximum: number): HoldingBarStyle
 }
 
 export function PerformanceDistributionCharts({
-  bins,
+  bins: sourceBins,
   averageWinHoldingMs,
   averageLossHoldingMs,
   winHoldingSamples,
   lossHoldingSamples,
   itemLabel = "交易",
 }: PerformanceDistributionChartsProps) {
+  const [detail, setDetail] = useState(30);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const tooltipId = useId();
+  // 只合并相邻的等宽区间，不用区间中心重新推测交易收益。
+  const groupSize = Math.max(1, Math.ceil(sourceBins.length / detail));
+  const bins: ProfitPercentDistributionBin[] = [];
+  for (let index = 0; index < sourceBins.length; index += groupSize) {
+    const group = sourceBins.slice(index, index + groupSize);
+    const minPercent = group[0].minPercent;
+    const maxPercent = group.at(-1)!.maxPercent;
+    bins.push({ minPercent, maxPercent, centerPercent: (minPercent + maxPercent) / 2,
+      count: group.reduce((sum, bin) => sum + bin.count, 0) });
+  }
   const minimumPercent = bins[0]?.minPercent ?? 0;
   const maximumPercent = bins.at(-1)?.maxPercent ?? 0;
   const percentRange = maximumPercent - minimumPercent;
+  const binWidth = bins[0] ? bins[0].maxPercent - bins[0].minPercent : 0;
+  const digits = binWidth > 0 ? Math.min(8, Math.max(2, Math.ceil(-Math.log10(binWidth)) + 1)) : 2;
+  const totalCount = bins.reduce((sum, bin) => sum + bin.count, 0);
+  const activeBin = activeIndex === null ? undefined : bins[activeIndex];
   const maximumCount = Math.max(1, ...bins.map((bin) => bin.count));
   const toX = (value: number) => percentRange === 0
     ? PLOT.left + PLOT_WIDTH / 2
@@ -75,7 +94,10 @@ export function PerformanceDistributionCharts({
   }));
   const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
   const slotWidth = bins.length <= 1 ? PLOT_WIDTH * 0.18 : PLOT_WIDTH / bins.length;
-  const barWidth = Math.max(5, Math.min(42, slotWidth * 0.58));
+  const barWidth = Math.max(2, Math.min(42, slotWidth * 0.72));
+  const yTicks = [...new Set(Array.from({ length: 5 }, (_, index) => Math.round(maximumCount * index / 4)))];
+  const xTicks = percentRange === 0 ? [minimumPercent]
+    : Array.from({ length: 5 }, (_, index) => minimumPercent + percentRange * index / 4);
   const zeroX = minimumPercent <= 0 && maximumPercent >= 0 ? toX(0) : null;
   const maximumHoldingMs = Math.max(
     averageWinHoldingMs ?? 0,
@@ -88,23 +110,34 @@ export function PerformanceDistributionCharts({
         <header className={styles.chartHeading}>
           <div>
             <strong>损益分布曲线</strong>
-            <span>横轴为利润百分比，纵轴为交易次数</span>
+            <span>利润百分比 · 交易次数 · {totalCount} 笔</span>
           </div>
-          <em>{bins.reduce((sum, bin) => sum + bin.count, 0)} 笔</em>
+          <div className={styles.detailControls} role="group" aria-label="损益分布粒度">
+            {[15, 30, 60].map((count) => (
+              <button key={count} type="button" aria-pressed={detail === count}
+                onClick={() => { setDetail(count); setActiveIndex(null); }}>
+                {count} 档
+              </button>
+            ))}
+          </div>
         </header>
+        <div className={styles.distributionFrame}>
         <svg
           className={styles.distributionCurve}
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          role="img"
+          role="group"
           aria-label="损益分布曲线，横轴利润百分比，纵轴交易次数"
         >
-          <line className={styles.gridLine} x1={PLOT.left} y1={PLOT.top} x2={WIDTH - PLOT.right} y2={PLOT.top} />
+          {yTicks.map((count) => (
+            <g key={count}>
+              <line className={styles.gridLine} x1={PLOT.left} y1={toY(count)} x2={WIDTH - PLOT.right} y2={toY(count)} />
+              <text className={styles.axisText} x={PLOT.left - 10} y={toY(count) + 4} textAnchor="end">{count}</text>
+            </g>
+          ))}
           <line className={styles.axisLine} x1={PLOT.left} y1={PLOT.top + PLOT_HEIGHT} x2={WIDTH - PLOT.right} y2={PLOT.top + PLOT_HEIGHT} />
           {zeroX !== null && (
             <line className={styles.zeroLine} x1={zeroX} y1={PLOT.top} x2={zeroX} y2={PLOT.top + PLOT_HEIGHT} />
           )}
-          <text className={styles.axisText} x={PLOT.left - 10} y={PLOT.top + 4} textAnchor="end">{maximumCount}</text>
-          <text className={styles.axisText} x={PLOT.left - 10} y={PLOT.top + PLOT_HEIGHT + 4} textAnchor="end">0</text>
           <text
             className={styles.axisTitle}
             x={16}
@@ -115,18 +148,28 @@ export function PerformanceDistributionCharts({
             交易次数
           </text>
           {points.map((point, index) => {
-            const height = Math.max(1, PLOT.top + PLOT_HEIGHT - point.y);
+            const height = PLOT.top + PLOT_HEIGHT - point.y;
+            const rangeLabel = point.minPercent === point.maxPercent
+              ? formatPercent(point.minPercent, digits)
+              : `${formatPercent(point.minPercent, digits)}（含）至 ${formatPercent(point.maxPercent, digits)}（${index === bins.length - 1 ? "含" : "不含"}）`;
             return (
               <g
                 className={styles.distributionDatum}
                 key={`${point.minPercent}-${point.maxPercent}-${index}`}
                 role="img"
-                aria-label={`${formatPercent(point.minPercent)} 至 ${formatPercent(point.maxPercent)}，${point.count} 笔${itemLabel}`}
+                aria-label={`${rangeLabel}，${point.count} 笔${itemLabel}`}
+                aria-describedby={activeIndex === index ? tooltipId : undefined}
                 tabIndex={0}
+                onMouseEnter={() => setActiveIndex(index)}
+                onMouseLeave={() => setActiveIndex(null)}
+                onFocus={() => setActiveIndex(index)}
+                onBlur={() => setActiveIndex(null)}
               >
-                <title>{formatPercent(point.minPercent)} 至 {formatPercent(point.maxPercent)} · {point.count} 笔{itemLabel}</title>
+                <rect className={styles.hitArea}
+                  x={bins.length === 1 ? PLOT.left : toX(point.minPercent)} y={PLOT.top}
+                  width={bins.length === 1 ? PLOT_WIDTH : slotWidth} height={PLOT_HEIGHT} />
                 <rect
-                  className={point.centerPercent < 0 ? styles.lossBin : styles.profitBin}
+                  className={point.minPercent < 0 && point.maxPercent > 0 ? styles.mixedBin : point.centerPercent < 0 ? styles.lossBin : styles.profitBin}
                   x={point.x - barWidth / 2}
                   y={PLOT.top + PLOT_HEIGHT - height}
                   width={barWidth}
@@ -137,25 +180,33 @@ export function PerformanceDistributionCharts({
                   className={point.centerPercent < 0 ? styles.lossPoint : styles.profitPoint}
                   cx={point.x}
                   cy={point.y}
-                  r={bins.length === 1 ? 4.5 : 3.5}
+                  r={bins.length === 1 ? 4.5 : bins.length > 30 ? 2 : 3}
                 />
               </g>
             );
           })}
           {points.length > 1 && <polyline className={styles.distributionLine} points={polyline} />}
-          <text className={styles.axisText} x={PLOT.left} y={HEIGHT - 22} textAnchor="start">
-            {formatPercent(minimumPercent)}
-          </text>
-          {zeroX !== null && minimumPercent !== 0 && maximumPercent !== 0 && (
-            <text className={styles.zeroText} x={zeroX} y={HEIGHT - 22} textAnchor="middle">0%</text>
-          )}
-          <text className={styles.axisText} x={WIDTH - PLOT.right} y={HEIGHT - 22} textAnchor="end">
-            {formatPercent(maximumPercent)}
-          </text>
+          {xTicks.map((value, index) => (
+            <text key={index} className={styles.axisText} x={toX(value)} y={HEIGHT - 22}
+              textAnchor={xTicks.length === 1 ? "middle" : index === 0 ? "start" : index === xTicks.length - 1 ? "end" : "middle"}>
+              {formatPercent(value, digits)}
+            </text>
+          ))}
           <text className={styles.axisTitle} x={PLOT.left + PLOT_WIDTH / 2} y={HEIGHT - 4} textAnchor="middle">
             利润百分比
           </text>
         </svg>
+        {activeBin && (
+          <div id={tooltipId} role="tooltip" className={styles.distributionTooltip}>
+            <strong>{formatPercent(activeBin.minPercent, digits)} 至 {formatPercent(activeBin.maxPercent, digits)}</strong>
+            <span>{activeBin.count} 笔{itemLabel} · 占 {totalCount === 0 ? "0.0" : (activeBin.count / totalCount * 100).toFixed(1)}%</span>
+            <span>{activeBin.minPercent === activeBin.maxPercent ? "相同收益" : activeIndex === bins.length - 1 ? "含左右端点" : "含左端点，不含右端点"}</span>
+          </div>
+        )}
+        </div>
+        <p className={styles.distributionNote}>
+          {totalCount === 0 ? "暂无已平仓记录" : `当前 ${bins.length} 档 · 每档 ${formatPercent(binWidth, digits).replace("+", "")} · 悬停查看区间笔数与占比`}
+        </p>
       </article>
 
       <article className={styles.chartCard}>

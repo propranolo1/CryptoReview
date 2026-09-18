@@ -305,6 +305,14 @@ export function PerformanceOverview({
   const curveScale = createChartScale(curveValues);
   const positionedCurvePoints = positionCurvePoints(curveValues, curveScale);
   const curveSegments = buildCurveSegments(positionedCurvePoints);
+  const metricValues = [0, ...curveValues];
+  const metricScale = createChartScale(metricValues);
+  const metricPoints = positionCurvePoints(metricValues, metricScale);
+  const metricSegments = buildCurveSegments(metricPoints);
+  const averageMaximum = Math.max(performance.averageWin, Math.abs(performance.averageLoss));
+  const flatTrades = performance.closedTrades - performance.wins - performance.losses;
+  const lossRate = performance.losses / performance.closedTrades * 100;
+  const feeCoverage = performance.knownFeeTrades / performance.closedTrades * 100;
   const dailyValues = performance.daily.map((item) => item.pnl);
   const dailyScale = createChartScale(dailyValues);
   const dailySlotWidth = PLOT_WIDTH / performance.daily.length;
@@ -359,11 +367,35 @@ export function PerformanceOverview({
             {formatMoney(performance.totalPnl, true)}
           </strong>
           <small>{performance.wins} 胜 · {performance.losses} 负</small>
+          <svg className={styles.metricSparkline} viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+            preserveAspectRatio="none" role="img" aria-label="总盈亏累计趋势，从零起点开始">
+            <path className={performance.totalPnl < 0 ? styles.metricLossArea : styles.metricProfitArea}
+              d={`M${PLOT.left},${metricScale.baselineY} ${metricPoints.map((point) => `L${point.x},${point.y}`).join(" ")} L${CHART_WIDTH - PLOT.right},${metricScale.baselineY} Z`} />
+            <line className={styles.baseline} x1={PLOT.left} x2={CHART_WIDTH - PLOT.right} y1={metricScale.baselineY} y2={metricScale.baselineY} />
+            {metricSegments.map((segment, index) => <line key={index}
+              className={segment.tone === "profit" ? styles.profitStroke : styles.lossStroke}
+              x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} />)}
+          </svg>
         </article>
         <article>
           <span>胜率</span>
           <strong>{performance.winRate.toFixed(1)}%</strong>
           <small>基于已平仓交易</small>
+          <div className={styles.metricVisual}>
+            <svg className={styles.winRing} viewBox="0 0 64 64" role="img"
+              aria-label={`胜负占比：${performance.wins} 胜、${performance.losses} 负、${flatTrades} 平`}>
+              <circle className={styles.ringTrack} cx="32" cy="32" r="25" />
+              <circle className={styles.ringWin} cx="32" cy="32" r="25" pathLength="100"
+                strokeDasharray={`${performance.winRate} ${100 - performance.winRate}`} />
+              <circle className={styles.ringLoss} cx="32" cy="32" r="25" pathLength="100"
+                strokeDasharray={`${lossRate} ${100 - lossRate}`} strokeDashoffset={-performance.winRate} />
+            </svg>
+            <div className={styles.metricLegend}>
+              <p><i className={styles.winSwatch} />盈利 <b>{performance.wins}</b></p>
+              <p><i className={styles.lossSwatch} />亏损 <b>{performance.losses}</b></p>
+              {flatTrades > 0 && <p><i className={styles.flatSwatch} />平手 <b>{flatTrades}</b></p>}
+            </div>
+          </div>
         </article>
         <article>
           <span>平均盈亏比</span>
@@ -373,6 +405,13 @@ export function PerformanceOverview({
           <small>
             平均赚 {formatMoney(performance.averageWin, true)} · 平均亏 {formatMoney(performance.averageLoss, true)}
           </small>
+          <div className={styles.comparisonBars} role="img"
+            aria-label={`平均盈亏金额对比：盈利 ${formatMoney(performance.averageWin)}，亏损 ${formatMoney(performance.averageLoss)}`}>
+            <div><label>平均赚</label><div className={styles.metricTrack}><i className={styles.winSwatch}
+              style={{ width: `${averageMaximum === 0 ? 0 : performance.averageWin / averageMaximum * 100}%` }} /></div></div>
+            <div><label>平均亏</label><div className={styles.metricTrack}><i className={styles.lossSwatch}
+              style={{ width: `${averageMaximum === 0 ? 0 : Math.abs(performance.averageLoss) / averageMaximum * 100}%` }} /></div></div>
+          </div>
         </article>
         <article>
           <span>手续费</span>
@@ -380,6 +419,13 @@ export function PerformanceOverview({
           <small>{hasUnknownFees
             ? `已统计 ${performance.knownFeeTrades} 笔 · ${performance.unknownFeeTrades} 笔缺失`
             : "已平仓交易合计"}</small>
+          <div className={styles.feeVisual}>
+            <p>平均已计费用 <b>{formatMoney(performance.totalFees / performance.closedTrades)}</b></p>
+            <div className={styles.metricTrack} role="img" aria-label={`手续费数据覆盖率 ${feeCoverage.toFixed(1)}%`}>
+              <i className={styles.feeFill} style={{ width: `${feeCoverage}%` }} />
+            </div>
+            <p>数据覆盖 <b>{performance.knownFeeTrades} / {performance.closedTrades} 笔</b></p>
+          </div>
         </article>
       </div>
 

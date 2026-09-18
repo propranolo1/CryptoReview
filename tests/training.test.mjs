@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { buildProfitPercentDistribution } from "../lib/performance.mjs";
 import test from "node:test";
 
 import {
@@ -1021,12 +1022,7 @@ test("多次训练统计总盈亏、胜率、平均盈亏比、累计曲线和 U
     averageWin: 10,
     averageLoss: -20,
     averageProfitLossRatio: 0.5,
-    profitPercentDistribution: [
-      { minPercent: -2, maxPercent: -1.25, centerPercent: -1.625, count: 1 },
-      { minPercent: -1.25, maxPercent: -0.5, centerPercent: -0.875, count: 0 },
-      { minPercent: -0.5, maxPercent: 0.25, centerPercent: -0.125, count: 1 },
-      { minPercent: 0.25, maxPercent: 1, centerPercent: 0.625, count: 1 },
-    ],
+    profitPercentDistribution: buildProfitPercentDistribution([-2, 0, 1]),
     averageWinHoldingMs: null,
     averageLossHoldingMs: null,
     winHoldingSamples: 0,

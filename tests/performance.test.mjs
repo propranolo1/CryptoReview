@@ -3,12 +3,39 @@ import test from "node:test";
 
 import {
   buildDailyPerformanceCalendar,
+  buildProfitPercentDistribution,
   calculateTradePerformance,
   filterTradesByCloseDate,
   getTradeCloseDateKey,
   getTradeCloseTime,
   groupTradesByCloseDate,
 } from "../lib/performance.mjs";
+
+test("损益分布为 49 笔交易保留 60 档细节，不再被 12 档上限压缩", () => {
+  const values = Array.from({ length: 49 }, (_, index) => (index - 24) / 10);
+  const bins = buildProfitPercentDistribution(values);
+  assert.equal(bins.length, 60);
+  assert.equal(bins.reduce((sum, bin) => sum + bin.count, 0), 49);
+  assert.equal(bins[0].minPercent, -2.4);
+  assert.equal(bins.at(-1).maxPercent, 2.4);
+  assert.ok(bins.every((bin) => bin.count <= 1), "相邻收益不应被粗粒度合并");
+});
+
+test("细粒度分布保留边界、零值和极端收益，空样本与相同收益不制造区间", () => {
+  const values = [-100, -0.01, 0, 0, 0.01, 1000];
+  for (const count of [15, 30, 60]) {
+    const bins = buildProfitPercentDistribution(values, count);
+    assert.equal(bins.length, count);
+    assert.equal(bins.reduce((sum, bin) => sum + bin.count, 0), values.length);
+    assert.equal(bins[0].count, 1);
+    assert.equal(bins.at(-1).count, 1);
+    assert.ok(bins.every((bin, index) => index === 0 || bin.minPercent === bins[index - 1].maxPercent));
+  }
+  assert.deepEqual(buildProfitPercentDistribution([]), []);
+  assert.deepEqual(buildProfitPercentDistribution([0, 0]), [
+    { minPercent: 0, maxPercent: 0, centerPercent: 0, count: 2 },
+  ]);
+});
 
 function closedTrade(overrides = {}) {
   return {
@@ -306,12 +333,7 @@ test("交易表现仅统计完全平仓交易，并按最终平仓时间升序�
       averageWin: 15.5,
       averageLoss: -20,
       profitLossRatio: 0.775,
-      profitPercentDistribution: [
-        { minPercent: -10, maxPercent: -4.25, centerPercent: -7.125, count: 1 },
-        { minPercent: -4.25, maxPercent: 1.5, centerPercent: -1.375, count: 1 },
-        { minPercent: 1.5, maxPercent: 7.25, centerPercent: 4.375, count: 0 },
-        { minPercent: 7.25, maxPercent: 13, centerPercent: 10.125, count: 2 },
-      ],
+      profitPercentDistribution: buildProfitPercentDistribution([-10, 13, 0, 10]),
       averageWinHoldingMs: null,
       averageLossHoldingMs: null,
       winHoldingSamples: 0,
