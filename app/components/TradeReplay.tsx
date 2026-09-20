@@ -840,7 +840,8 @@ function CandleReplayChart({
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const priceLineKeyRef = useRef("");
   const renderedCursorRef = useRef(-1);
-  const renderedChartLengthRef = useRef(0);
+  const followingLatestRef = useRef(true);
+  const [followingLatest, setFollowingLatest] = useState(true);
   const dataKeyRef = useRef("");
   const openInterestDataKeyRef = useRef("");
   const [ready, setReady] = useState(false);
@@ -867,7 +868,13 @@ function CandleReplayChart({
     let handleDoubleClick: ((event: MouseEvent) => void) | null = null;
     let historyTimer: ReturnType<typeof setTimeout> | undefined;
     let historyInteraction = false;
-    const handleHistoryInteraction = () => { historyInteraction = true; };
+    const handleHistoryInteraction = () => {
+      historyInteraction = true;
+      followingLatestRef.current = false;
+      setFollowingLatest(false);
+      // 用户开始操作后，最新柱仍在屏幕内也不能随新柱自动移动。
+      chart?.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+    };
     const checkHistoryRange = () => {
       clearTimeout(historyTimer);
       historyTimer = setTimeout(() => {
@@ -1155,8 +1162,8 @@ function CandleReplayChart({
       deltaSeriesRef.current = deltaSeries;
       cvdSeriesRef.current = cvdSeries;
       markersRef.current = markers;
-      containerRef.current.addEventListener("pointerdown", handleHistoryInteraction, { passive: true });
-      containerRef.current.addEventListener("wheel", handleHistoryInteraction, { passive: true });
+      containerRef.current.addEventListener("pointerdown", handleHistoryInteraction, { passive: true, capture: true });
+      containerRef.current.addEventListener("wheel", handleHistoryInteraction, { passive: true, capture: true });
       chart.timeScale().subscribeVisibleLogicalRangeChange(checkHistoryRange);
       checkHistoryRangeRef.current = checkHistoryRange;
       resizeObserver = new ResizeObserver(() => {
@@ -1171,8 +1178,8 @@ function CandleReplayChart({
     return () => {
       disposed = true;
       clearTimeout(historyTimer);
-      chartContainer?.removeEventListener("pointerdown", handleHistoryInteraction);
-      chartContainer?.removeEventListener("wheel", handleHistoryInteraction);
+      chartContainer?.removeEventListener("pointerdown", handleHistoryInteraction, true);
+      chartContainer?.removeEventListener("wheel", handleHistoryInteraction, true);
       chart?.timeScale().unsubscribeVisibleLogicalRangeChange(checkHistoryRange);
       checkHistoryRangeRef.current = null;
       chartFirstTimeRef.current = null;
@@ -1198,7 +1205,6 @@ function CandleReplayChart({
       priceLinesRef.current = [];
       priceLineKeyRef.current = "";
       renderedCursorRef.current = -1;
-      renderedChartLengthRef.current = 0;
       dataKeyRef.current = "";
       openInterestDataKeyRef.current = "";
     };
@@ -1321,7 +1327,6 @@ function CandleReplayChart({
     };
     const previousCursor = renderedCursorRef.current;
     const previousRange = chart.timeScale().getVisibleLogicalRange();
-    const followingLatest = previousRange !== null && previousRange.to >= renderedChartLengthRef.current - 1;
     const chartStartTime = candles[chartStartIndex].time;
     const previousFirstTime = chartFirstTimeRef.current;
     const prependedBars = previousFirstTime !== null && chartStartTime < previousFirstTime
@@ -1530,7 +1535,7 @@ function CandleReplayChart({
       }));
     markerApi.setMarkers(markers);
 
-    if (playing) {
+    if (playing && followingLatestRef.current) {
       series.priceScale().applyOptions({ autoScale: true });
     }
 
@@ -1538,11 +1543,13 @@ function CandleReplayChart({
       chart.timeScale().setVisibleLogicalRange(preservedRange);
     } else if (previousCursor < 0) {
       chart.timeScale().fitContent();
-    } else if (previousCursor !== safeCursor && prependedBars === 0 && (!playing || followingLatest)) {
-      chart.timeScale().scrollToRealTime();
+    } else if (!followingLatestRef.current) {
+      if (!canUpdate && previousRange) chart.timeScale().setVisibleLogicalRange(previousRange);
+    } else if (previousCursor !== safeCursor && prependedBars === 0) {
+      // 使用即时定位，避免上一次跟随动画在用户拖动后继续把视口拉回。
+      chart.timeScale().scrollToPosition(8, false);
     }
     chartFirstTimeRef.current = chartStartTime;
-    renderedChartLengthRef.current = safeCursor - chartStartIndex + 1;
     if (prependedBars > 0) checkHistoryRangeRef.current?.();
   }, [
     candlePhase,
@@ -1562,6 +1569,22 @@ function CandleReplayChart({
   return (
     <div className="chart-canvas-wrap">
       <div ref={containerRef} className="chart-canvas" aria-hidden="true" />
+      {ready && !followingLatest && (
+        <button
+          type="button"
+          className="chart-follow-button"
+          aria-label="恢复跟随最新 K 线"
+          title="回到当前回放位置并恢复自动跟随，保留当前缩放"
+          onClick={() => {
+            followingLatestRef.current = true;
+            setFollowingLatest(true);
+            chartRef.current?.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: true });
+            chartRef.current?.timeScale().scrollToPosition(8, false);
+          }}
+        >
+          跟随最新 →
+        </button>
+      )}
       {!ready && <div className="chart-placeholder">正在准备图表…</div>}
     </div>
   );

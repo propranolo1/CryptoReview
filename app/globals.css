@@ -1616,6 +1616,25 @@ body:has(.replay-app.theme-light) {
   height: 100%;
 }
 
+.chart-follow-button {
+  position: absolute;
+  right: 80px;
+  bottom: 36px;
+  z-index: 3;
+  border: 1px solid #c7d7ee;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #2962ff;
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.1);
+  padding: 7px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chart-follow-button:hover {
+  background: #edf4ff;
+}
+
 .chart-placeholder,
 .chart-loading {
   position: absolute;
