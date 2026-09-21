@@ -73,6 +73,28 @@ function apiFill({ tradeId, orderId, side, quantity, price, commission, time }) 
   };
 }
 
+for (const [positionSide, closingSide] of [["LONG", "SELL"], ["SHORT", "BUY"], ["BOTH", "SELL"]]) {
+  test(`缺少开仓的 ${positionSide} 平仓不能反向开仓并吞掉下一笔完整交易`, () => {
+    const closing = apiOrder({ orderId: "orphan-close", side: closingSide, positionSide,
+      quantity: 2, price: 100, time: "2026-09-20T01:00:00Z" });
+    if (positionSide === "BOTH") closing.reduceOnly = true;
+    const openingSide = closingSide === "SELL" ? "BUY" : "SELL";
+    const orders = [closing,
+      apiOrder({ orderId: "next-entry", side: openingSide, positionSide,
+        quantity: 8, price: 110, time: "2026-09-20T02:00:00Z" }),
+      apiOrder({ orderId: "next-close", side: closingSide, positionSide,
+        quantity: 8, price: 120, time: "2026-09-20T03:00:00Z" }),
+    ];
+    const result = reconstructBinanceUsdmReplays(orders);
+    assert.equal(result.trades.length, 1);
+    assert.equal(result.trades[0].sourceEntryOrderId, "next-entry");
+    assert.equal(result.trades[0].quantity, 8);
+    assert.equal(result.trades[0].side, openingSide === "BUY" ? "long" : "short");
+    assert.equal(result.warnings.length, 1);
+    assert.deepEqual(result.warnings[0].orderIds, ["orphan-close"]);
+  });
+}
+
 test("识别并解析 Binance U 本位订单历史中文 CSV", () => {
   assert.equal(isBinanceUsdmOrderHistoryCsv(csv), true);
   assert.equal(isBinanceUsdmOrderHistoryCsv("symbol,side,quantity\nBTCUSDT,long,1"), false);
@@ -95,6 +117,28 @@ test("识别并解析 Binance U 本位订单历史中文 CSV", () => {
     createdAt: "2026-07-16T06:22:41.000Z",
     updatedAt: "2026-07-16T07:33:17.000Z",
   });
+});
+
+test("补齐开仓后替换旧版从平仓错误生成的复盘，保留笔记且不误删其它账户", () => {
+  const entry = apiOrder({ orderId: "real-entry", side: "BUY", quantity: 2,
+    price: 100, time: "2026-09-19T01:00:00Z" });
+  const close = apiOrder({ orderId: "close", side: "SELL", quantity: 2,
+    price: 110, time: "2026-09-20T01:00:00Z" });
+  const nextEntry = apiOrder({ orderId: "next-entry", side: "BUY", quantity: 8,
+    price: 120, time: "2026-09-20T02:00:00Z" });
+  const nextClose = apiOrder({ orderId: "next-close", side: "SELL", quantity: 8,
+    price: 130, time: "2026-09-20T03:00:00Z" });
+  // 模拟旧版忽略 LONG 平仓意图后生成的错误交易。
+  const old = reconstructBinanceUsdmReplays([close, nextEntry, nextClose].map(o => ({ ...o, positionSide: "BOTH" }))).trades;
+  old.find(t => t.sourceEntryOrderId === "close").notes = "用户笔记";
+  const other = { ...old.find(t => t.sourceEntryOrderId === "close"),
+    id: "import-binance-futures-other-BTCUSDT-close", sourceKey: "binance-futures:other:BTCUSDT:close" };
+  const rebuilt = reconstructBinanceUsdmReplays([entry, close, nextEntry, nextClose]).trades;
+  const merged = mergeBinanceApiReplays([...old, other], rebuilt);
+  assert.equal(merged.length, 3);
+  assert.ok(merged.some(t => t.id === other.id));
+  assert.equal(merged.find(t => t.sourceEntryOrderId === "real-entry").notes, "用户笔记");
+  assert.equal(merged.find(t => t.sourceEntryOrderId === "next-entry").quantity, 8);
 });
 
 test("订单历史重建 HYPE 成交与动态平仓挂单，但不虚构止损和手续费", () => {

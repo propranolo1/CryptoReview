@@ -140,7 +140,7 @@ export interface BinanceReconstructedReplay {
 }
 
 export interface BinanceReplayWarning {
-  code: "ambiguous_open_position" | "missing_open_position_history";
+  code: "ambiguous_open_position" | "missing_open_position_history" | "missing_entry_history";
   symbol: string;
   orderIds: string[];
   message: string;

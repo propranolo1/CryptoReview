@@ -3,6 +3,30 @@ import test from "node:test";
 
 import { createBinanceApiService } from "../desktop/binance-api-service.mjs";
 
+test("查询旧日期后同步游标不能越过实际读取终点，下一次更新必须覆盖中间缺口", async () => {
+  const requestedStart = Date.parse("2026-09-01T00:00:00Z");
+  const oldEnd = Date.parse("2026-09-14T15:59:59.999Z");
+  const now = Date.parse("2026-09-21T02:00:00Z");
+  let lastSyncedAt = null;
+  const ranges = [];
+  const service = createBinanceApiService({
+    repository: { loadState: () => ({ orders: [] }), saveExchangeSyncSnapshot() {} },
+    vault: {
+      read: () => ({ accountId: "synthetic-account", apiKey: "synthetic-key", apiSecret: "synthetic-secret" }),
+      getStatus: () => ({ lastSyncedAt }),
+      markSynced(time) { lastSyncedAt = time; return { lastSyncedAt }; },
+    },
+    client: { async syncOrders(options) {
+      ranges.push(options);
+      return { orders: [], openPositions: [], syncedAt: now };
+    } },
+  });
+  await service.syncOrders({ startTime: requestedStart, endTime: oldEnd });
+  assert.equal(lastSyncedAt, oldEnd);
+  await service.syncOrders({ startTime: requestedStart, endTime: now, incremental: true });
+  assert.ok(ranges[1].startTime <= oldEnd);
+});
+
 test("Binance API 服务先验证再加密保存，并在同步后先落订单再更新时间", async () => {
   const calls = [];
   const vault = {
@@ -64,7 +88,7 @@ test("Binance API 服务先验证再加密保存，并在同步后先落订单�
   ]);
   assert.equal(result.orders.length, 1);
   assert.equal(result.accountId, "account");
-  assert.deepEqual(result.status, { configured: true, lastSyncedAt: 1784189000000 });
+  assert.deepEqual(result.status, { configured: true, lastSyncedAt: 1784188799000 });
   assert.deepEqual(calls.find(([name]) => name === "save")?.[1], {
     apiKey: "api-key",
     apiSecret: "secret",
@@ -116,7 +140,7 @@ test("Binance API 服务在标记同步成功前保存包含空仓的完整同�
       openPositions: [],
       syncedAt: 1784189000000,
     }],
-    ["markSynced", 1784189000000],
+    ["markSynced", 1784188799000],
   ]);
 });
 

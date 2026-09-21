@@ -72,7 +72,8 @@ export function createBinanceApiService({ repository, vault, client }) {
           openPositions: result.openPositions ?? [],
           syncedAt: result.syncedAt,
         });
-        const status = vault.markSynced(result.syncedAt);
+        // 游标表示已读取的历史终点，不能用请求完成时间跳过尚未查询的日期。
+        const status = vault.markSynced(Math.min(result.syncedAt, syncRange.endTime));
         options?.onProgress?.({ stage: "complete", message: "Binance 更新完成" });
         return {
           ...result,

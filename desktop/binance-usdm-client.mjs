@@ -503,6 +503,28 @@ export function createBinanceUsdmClient({
         );
       }
 
+      // 成交发生在查询窗口内，委托却可能更早创建。按成交中的订单号补查，
+      // 避免找不到历史委托时静默丢弃已读取的成交和手续费。
+      const missingOrderTasks = [...fillsByOrderKey.entries()]
+        .filter(([key]) => !ordersByKey.has(key))
+        .map(([key, fills]) => async () => {
+          const { symbol, orderId } = fills[0];
+          const payload = await signedGet(
+            "/fapi/v1/order", { symbol, orderId }, credentials, clockOffset,
+          );
+          const order = normalizeNormalOrder(payload, accountId);
+          if (order.symbol !== symbol || order.orderId !== orderId) {
+            throw new Error("Binance 成交对应的委托响应不匹配，请重新同步");
+          }
+          ordersByKey.set(key, order);
+        });
+      await runTasksWithConcurrency(missingOrderTasks, HISTORY_CONCURRENCY, (completed, total) => {
+        emitProgress(onProgress, {
+          stage: "active-orders", completed, total,
+          message: `正在补齐 Binance 成交委托 ${completed}/${total}`,
+        });
+      });
+
       const orders = [...ordersByKey.values()]
         .map((order) => {
           const fills = fillsByOrderKey.get(`${order.userId}\u0000${order.symbol}\u0000${order.orderId}`);

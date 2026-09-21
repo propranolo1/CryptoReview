@@ -358,7 +358,7 @@ export function BinanceApiConnect({
 
     let range: SyncRange;
     try {
-      range = { ...getSyncRange(startDate, endDate), incremental: true };
+      range = { ...getSyncRange(startDate, dateInputValue(Date.now())), incremental: true };
     } catch (cause) {
       setGeneralError(errorText(cause, "同步日期范围无效"));
       setOpen(true);

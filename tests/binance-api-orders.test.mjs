@@ -11,6 +11,54 @@ import {
   signBinanceQuery,
 } from "../desktop/binance-usdm-client.mjs";
 
+for (const missingOrderError of [null, -2013]) {
+  test(`成交对应的旧委托不在历史窗口时必须补查，不能丢弃成交（${missingOrderError ?? "成功"}）`, async () => {
+    const now = Date.parse("2026-09-21T00:00:00Z");
+    const queriedOrders = [];
+    const fill = {
+      id: 501, orderId: 101, symbol: "BTCUSDT", side: "BUY", positionSide: "LONG",
+      price: "100", qty: "2", quoteQty: "200", commission: "0.02",
+      commissionAsset: "USDT", realizedPnl: "0", time: now - 1000,
+    };
+    const client = createBinanceUsdmClient({
+      now: () => now,
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        if (url.pathname === "/fapi/v1/time") return Response.json({ serverTime: now });
+        if (url.pathname === "/fapi/v1/userTrades") return Response.json([fill, fill]);
+        if (url.pathname === "/fapi/v1/order") {
+          queriedOrders.push([url.searchParams.get("symbol"), url.searchParams.get("orderId")]);
+          if (missingOrderError) {
+            return Response.json({ code: missingOrderError, msg: "Order does not exist." }, { status: 400 });
+          }
+          return Response.json({
+            orderId: 101, symbol: "BTCUSDT", side: "BUY", positionSide: "LONG",
+            origType: "LIMIT", price: "100", avgPrice: "100", origQty: "2",
+            executedQty: "2", cumQuote: "200", status: "FILLED",
+            time: now - 5 * 86_400_000, updateTime: now - 1000,
+          });
+        }
+        return Response.json([]);
+      },
+    });
+    const syncing = client.syncOrders({
+      apiKey: "synthetic-key", apiSecret: "synthetic-secret", accountId: "synthetic-account",
+      symbols: ["BTCUSDT"], startTime: now - 86_400_000, endTime: now,
+    });
+    if (missingOrderError) {
+      await assert.rejects(syncing, /Order does not exist/);
+    } else {
+      const result = await syncing;
+      assert.equal(result.orders.length, 1);
+      assert.equal(result.orders[0].orderId, "101");
+      assert.equal(result.orders[0].fills.length, 1);
+      assert.equal(result.orders[0].executedQuantity, 2);
+      assert.equal(result.fillCount, 1);
+    }
+    assert.deepEqual(queriedOrders, [["BTCUSDT", "101"]]);
+  });
+}
+
 test("Binance 资金费流水保留正负金额、资产与发生时间", () => {
   assert.deepEqual(normalizeFundingFee({
     symbol: "BTCUSDT",
