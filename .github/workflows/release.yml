@@ -37,5 +37,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $assets = Get-ChildItem "out/make/squirrel.windows/x64" -File | ForEach-Object { $_.FullName }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw "发布标签与安装包版本不一致" }
+          $releaseDir = "out/make/squirrel.windows/x64"
+          $assets = @(
+            "$releaseDir/CryptoReview-$version Setup.exe",
+            "$releaseDir/CryptoReview-$version-full.nupkg",
+            "$releaseDir/CryptoReview-$version-delta.nupkg",
+            "$releaseDir/RELEASES"
+          )
+          foreach ($asset in $assets) {
+            if (!(Test-Path -LiteralPath $asset -PathType Leaf)) { throw "缺少发布产物：$asset" }
+          }
           gh release create $env:GITHUB_REF_NAME $assets --verify-tag --title "CryptoReview $env:GITHUB_REF_NAME" --generate-notes

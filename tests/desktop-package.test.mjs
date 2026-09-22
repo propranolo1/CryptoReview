@@ -73,6 +73,8 @@ test("桌面打包同时提供 Windows Squirrel 与 macOS ZIP 产物", async () 
         name: "CryptoReview",
         authors: "xin",
         description: "Binance 与 OKX U 本位合约本地交易复盘桌面应用",
+        remoteReleases: "https://github.com/propranolo1/CryptoReview/releases/latest/download",
+        noDelta: false,
       },
     },
     {

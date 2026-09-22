@@ -14,6 +14,12 @@ module.exports = {
       /^\/(?:AI_README\.md|README\.md|drizzle\.config\.ts|eslint\.config\.mjs|next\.config\.ts|postcss\.config\.mjs|tsconfig\.json|tsconfig\.tsbuildinfo|vite\.config\.ts|worker-configuration\.d\.ts)$/,
     ],
   },
+  hooks: {
+    postMake: async (_config, results) => {
+      const { prepareSquirrelReleases } = await import("./scripts/squirrel-releases.mjs");
+      return prepareSquirrelReleases(results);
+    },
+  },
   makers: [
     {
       name: "@electron-forge/maker-squirrel",
@@ -22,6 +28,8 @@ module.exports = {
         name: "CryptoReview",
         authors: "xin",
         description: "Binance 与 OKX U 本位合约本地交易复盘桌面应用",
+        remoteReleases: "https://github.com/propranolo1/CryptoReview/releases/latest/download",
+        noDelta: false,
       },
     },
     {
