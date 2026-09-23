@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { prepareSquirrelReleases } from "../scripts/squirrel-releases.mjs";
 
 const require = createRequire(import.meta.url);
 const forgeConfig = require("../forge.config.cjs");
@@ -19,6 +20,8 @@ async function makeFixture(manifest, overrides = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), "cryptoreview-delta-test-"));
   const files = {
     RELEASES: manifest,
+    "CryptoReview-0.2.20-full.nupkg": "测试安装包",
+    "CryptoReview-0.2.21-full.nupkg": "测试安装包",
     "CryptoReview-0.2.22-full.nupkg": "测试安装包",
     "CryptoReview-0.2.22-delta.nupkg": "测试安装包",
     "CryptoReview-0.2.22 Setup.exe": "测试安装器",
@@ -44,7 +47,7 @@ test("发布清单兼容旧更新服务，并保留跨版本差分链和完整�
     entry("0.2.22", "delta"),
     entry("0.2.22", "full"),
   ].join("\r\n"));
-  const results = await forgeConfig.hooks.postMake(forgeConfig, [fixture.result]);
+  const results = await prepareSquirrelReleases([fixture.result], { repairExecutable: async () => false });
   const manifest = await readFile(path.join(fixture.directory, "RELEASES"), "utf8");
   assert.equal(manifest, [
     entry("0.2.22", "full"),
@@ -60,7 +63,7 @@ test("发布清单兼容旧更新服务，并保留跨版本差分链和完整�
   assert.ok(urls.every((url) => url.origin === "https://github.com"));
   assert.equal(urls[1].pathname, "/propranolo1/CryptoReview/releases/download/v0.2.21/CryptoReview-0.2.21-delta.nupkg");
   // 重复执行不会产生双重 URL，也不会丢失差分链。
-  await forgeConfig.hooks.postMake(forgeConfig, [fixture.result]);
+  await prepareSquirrelReleases([fixture.result], { repairExecutable: async () => false });
   assert.equal(await readFile(path.join(fixture.directory, "RELEASES"), "utf8"), manifest);
 });
 

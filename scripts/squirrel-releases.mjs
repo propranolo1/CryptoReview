@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { compareVersions } from "../desktop/update-service.mjs";
+import { repairSquirrelExecutable } from "./squirrel-executable-delta.mjs";
 
 const RELEASE_BASE = "https://github.com/propranolo1/CryptoReview/releases/download";
 
@@ -28,16 +29,21 @@ function parseEntries(source, version) {
   });
 }
 
-async function verifyPackage(directory, entry) {
+async function packageDigest(directory, entry) {
   const file = path.join(directory, entry.filename);
   const hash = createHash("sha1");
   for await (const chunk of createReadStream(file)) hash.update(chunk);
-  if (hash.digest("hex") !== entry.sha.toLowerCase() || (await stat(file)).size !== entry.size) {
+  return { sha: hash.digest("hex"), size: (await stat(file)).size };
+}
+
+async function verifyPackage(directory, entry) {
+  const actual = await packageDigest(directory, entry);
+  if (actual.sha !== entry.sha.toLowerCase() || actual.size !== entry.size) {
     throw new Error(`Squirrel 安装包校验失败：${entry.filename}`);
   }
 }
 
-export async function prepareSquirrelReleases(results) {
+export async function prepareSquirrelReleases(results, { repairExecutable = repairSquirrelExecutable } = {}) {
   for (const result of results) {
     if (result.platform !== "win32") continue;
     const manifestPath = result.artifacts.find((file) => path.basename(file) === "RELEASES");
@@ -48,7 +54,13 @@ export async function prepareSquirrelReleases(results) {
     const delta = entries.find((entry) => entry.version === version && entry.kind === "delta");
     if (!full) throw new Error("当前版本缺少完整包，不能发布");
     if (!delta) throw new Error("当前版本缺少差分包，请检查上一版 Release 是否可下载且版本更低");
-    await Promise.all([full, delta].map((entry) => verifyPackage(path.dirname(manifestPath), entry)));
+    const directory = path.dirname(manifestPath);
+    const baseline = entries.filter((entry) => entry.kind === "full" && compareVersions(entry.version, version) < 0)
+      .sort((left, right) => compareVersions(right.version, left.version))[0];
+    await Promise.all([full, delta, ...(baseline ? [baseline] : [])].map((entry) => verifyPackage(directory, entry)));
+    if (await repairExecutable({ directory, baseline: baseline?.filename, full: full.filename, delta: delta.filename })) {
+      Object.assign(delta, await packageDigest(directory, delta));
+    }
 
     // update.electronjs.org 只把首个包名改写为下载地址。将当前完整包置于首行，
     // 其余差分包使用固定版本绝对地址，同时保留旧差分链，供跳过版本时连续应用。
