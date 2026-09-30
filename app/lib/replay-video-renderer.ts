@@ -18,6 +18,7 @@ import {
   buildVolumeCandleColorPoint,
 } from "@/lib/indicators.mjs";
 import { buildReplayTradeMarkers } from "@/lib/replay-markers.mjs";
+import { drawReplayMarkerRing } from "@/lib/replay-marker-rings.mjs";
 import {
   getReplayPriceLines,
   type ReplayRiskLevel,
@@ -796,17 +797,25 @@ function drawTradeMarkers(
 ) {
   if (!state.hasEntered) return;
 
-  buildReplayTradeMarkers(chartCandles, state.tradeSnapshot.events, state.replayTimeMs).forEach((marker) => {
+  buildReplayTradeMarkers(chartCandles, state.tradeSnapshot.events, state.replayTimeMs, {
+    peakQuantity: buildReplayPositionState(state.trade).peakQuantity,
+    showRatio: (state.trade.entries?.length ?? 1) > 1,
+  }).forEach((marker) => {
     const index = marker.index;
     if (index < chartStartIndex || index > chartCursor) return;
     const isBuy = marker.side === "buy";
+    const candle = chartCandles[index];
+    const anchorY = priceY(isBuy ? candle.low : candle.high);
     drawTradeArrow(
       context,
       xAt(index - chartStartIndex),
-      priceY(marker.price),
-      `${isBuy ? "BUY" : "SELL"}${marker.text ? ` ${marker.text}` : ""}`,
+      anchorY,
+      marker.ratio === null ? (isBuy ? "BUY" : "SELL") : "",
       isBuy,
     );
+    if (marker.ratio !== null) {
+      drawReplayMarkerRing(context, xAt(index - chartStartIndex), anchorY + (isBuy ? 64 : -64), marker.ratio, isBuy ? COLORS.green : COLORS.red);
+    }
   });
 }
 

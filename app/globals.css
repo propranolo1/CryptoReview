@@ -754,6 +754,37 @@ body:has(.replay-app.theme-light) {
   font-weight: 700;
 }
 
+.trade-index-mode {
+  display: flex;
+  gap: 4px;
+  margin: 0 4px 8px;
+  padding: 3px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--filter-bg);
+}
+
+.trade-index-mode button {
+  flex: 1;
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trade-index-mode button.active {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.trade-index-mode button:focus-visible {
+  outline: 2px solid var(--amber);
+}
+
 .date-filter {
   margin: 0 4px 12px;
   padding: 5px;

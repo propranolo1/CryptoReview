@@ -75,6 +75,8 @@ import {
 } from "@/lib/simulation.mjs";
 import { createReplayHistoryLoader, shiftReplayHistoryRange, type ReplayHistoryLoader } from "@/lib/replay-history.mjs";
 import { buildReplayTradeMarkers } from "@/lib/replay-markers.mjs";
+import { createReplayMarkerRings } from "@/lib/replay-marker-rings.mjs";
+import { filterTradesByToken, groupTradesByToken } from "@/lib/trade-index.mjs";
 import { createHypeScreenshotTrade } from "@/lib/records.mjs";
 import {
   getReplayPriceLines,
@@ -837,6 +839,8 @@ function CandleReplayChart({
   const deltaSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const cvdSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const markerRingsRef = useRef<ReturnType<typeof createReplayMarkerRings> | null>(null);
+  const markerPeakQuantity = useMemo(() => buildReplayPositionState(trade).peakQuantity, [trade]);
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const priceLineKeyRef = useRef("");
   const renderedCursorRef = useRef(-1);
@@ -1081,6 +1085,9 @@ function CandleReplayChart({
             crosshairMarkerVisible: true,
           }, cvdPaneIndex);
       const markers = library.createSeriesMarkers(series, [], { autoScale: true });
+      const markerRings = createReplayMarkerRings();
+      series.attachPrimitive(markerRings);
+      markerRingsRef.current = markerRings;
       const xinMarkers = xinWt1Series
         ? library.createSeriesMarkers(xinWt1Series, [], { autoScale: true })
         : null;
@@ -1202,6 +1209,7 @@ function CandleReplayChart({
       deltaSeriesRef.current = null;
       cvdSeriesRef.current = null;
       markersRef.current = null;
+      markerRingsRef.current = null;
       priceLinesRef.current = [];
       priceLineKeyRef.current = "";
       renderedCursorRef.current = -1;
@@ -1521,10 +1529,11 @@ function CandleReplayChart({
       }
     }
 
-    const markers: SeriesMarker<Time>[] = buildReplayTradeMarkers(
+    const tradeMarkers = buildReplayTradeMarkers(
       candles, replaySnapshot.events, replayTimeMs,
-    ).filter((marker) => marker.index >= chartStartIndex && marker.index <= safeCursor)
-      .map((marker) => ({
+      { peakQuantity: markerPeakQuantity, showRatio: (trade.entries?.length ?? 1) > 1 },
+    ).filter((marker) => marker.index >= chartStartIndex && marker.index <= safeCursor);
+    const markers: SeriesMarker<Time>[] = tradeMarkers.map((marker) => ({
         id: `${trade.id}:${marker.time}:${marker.side}`,
         time: marker.time as UTCTimestamp,
         position: marker.side === "buy" ? "belowBar" : "aboveBar",
@@ -1534,6 +1543,10 @@ function CandleReplayChart({
         size: 1.5,
       }));
     markerApi.setMarkers(markers);
+    markerRingsRef.current?.setMarkers(tradeMarkers.map((marker) => {
+      const candle = marker.index === safeCursor ? currentCandle ?? candles[safeCursor] : candles[marker.index];
+      return { ...marker, anchorPrice: marker.side === "buy" ? candle.low : candle.high };
+    }));
 
     if (playing && followingLatestRef.current) {
       series.priceScale().applyOptions({ autoScale: true });
@@ -1563,6 +1576,7 @@ function CandleReplayChart({
     playing,
     ready,
     trade,
+    markerPeakQuantity,
     volumeColoringConfig,
   ]);
 
@@ -1630,7 +1644,8 @@ export function TradeReplay() {
   const [source, setSource] = useState("正在获取行情");
   const [dataNotice, setDataNotice] = useState("");
   const [importNotice, setImportNotice] = useState("");
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedTradeIndex, setSelectedTradeIndex] = useState<string | null>(null);
+  const [tradeIndexMode, setTradeIndexMode] = useState<"date" | "token">("date");
   const [hydrated, setHydrated] = useState(false);
   const [persistenceMode, setPersistenceMode] = useState<PersistenceMode>("loading");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1716,15 +1731,18 @@ export function TradeReplay() {
     () => groupTradesByCloseDate(archiveTrades),
     [archiveTrades],
   );
+  const tokenGroups = useMemo(() => groupTradesByToken(archiveTrades), [archiveTrades]);
   const starredTrades = useMemo(
     () => filterStarredReplayTrades(archiveTrades),
     [archiveTrades],
   );
   const filteredTrades = useMemo(
-    () => selectedDate === STARRED_TRADE_FILTER
+    () => selectedTradeIndex === STARRED_TRADE_FILTER
       ? starredTrades
-      : filterTradesByCloseDate(archiveTrades, selectedDate),
-    [archiveTrades, selectedDate, starredTrades],
+      : tradeIndexMode === "token"
+        ? filterTradesByToken(archiveTrades, selectedTradeIndex)
+        : filterTradesByCloseDate(archiveTrades, selectedTradeIndex),
+    [archiveTrades, selectedTradeIndex, starredTrades, tradeIndexMode],
   );
   const contextMenuTrade = tradeContextMenu
     ? archiveTrades.find((item) => item.id === tradeContextMenu.tradeId) ?? null
@@ -1747,16 +1765,18 @@ export function TradeReplay() {
 
   useEffect(() => {
     if (
-      selectedDate &&
-      selectedDate !== STARRED_TRADE_FILTER &&
-      !closeDateGroups.some((group) => group.date === selectedDate)
+      selectedTradeIndex &&
+      selectedTradeIndex !== STARRED_TRADE_FILTER &&
+      !(tradeIndexMode === "token"
+        ? tokenGroups.some((group) => group.token === selectedTradeIndex)
+        : closeDateGroups.some((group) => group.date === selectedTradeIndex))
     ) {
-      setSelectedDate(null);
+      setSelectedTradeIndex(null);
       return;
     }
 
-    if (selectedDate === STARRED_TRADE_FILTER && starredTrades.length === 0) {
-      setSelectedDate(null);
+    if (selectedTradeIndex === STARRED_TRADE_FILTER && starredTrades.length === 0) {
+      setSelectedTradeIndex(null);
       return;
     }
 
@@ -1764,22 +1784,22 @@ export function TradeReplay() {
       filteredTrades.length > 0 &&
       !filteredTrades.some((item) => item.id === selectedId)
     ) {
-      if (selectedDate === STARRED_TRADE_FILTER) {
+      if (selectedTradeIndex === STARRED_TRADE_FILTER) {
         setSelectedId(filteredTrades[0].id);
         setPlaying(false);
         return;
       }
       if (
-        selectedDate !== null &&
+        selectedTradeIndex !== null &&
         archiveTrades.some((item) => item.id === selectedId)
       ) {
-        setSelectedDate(null);
+        setSelectedTradeIndex(null);
         return;
       }
       setSelectedId(filteredTrades[0].id);
       setPlaying(false);
     }
-  }, [archiveTrades, closeDateGroups, filteredTrades, selectedDate, selectedId, starredTrades]);
+  }, [archiveTrades, closeDateGroups, tokenGroups, tradeIndexMode, filteredTrades, selectedTradeIndex, selectedId, starredTrades]);
 
   useEffect(() => {
     if (!tradeContextMenu) return;
@@ -2465,13 +2485,21 @@ export function TradeReplay() {
     if (module !== "replay") setPlaying(false);
   };
 
-  const selectCloseDate = (date: string | null) => {
+  const selectTradeIndex = (index: string | null) => {
     setTradeContextMenu(null);
-    setSelectedDate(date);
-    const firstTrade = date === STARRED_TRADE_FILTER
+    setSelectedTradeIndex(index);
+    const firstTrade = index === STARRED_TRADE_FILTER
       ? starredTrades[0]
-      : filterTradesByCloseDate(archiveTrades, date)[0];
+      : tradeIndexMode === "token"
+        ? filterTradesByToken(archiveTrades, index)[0]
+        : filterTradesByCloseDate(archiveTrades, index)[0];
     if (firstTrade) selectTrade(firstTrade.id);
+  };
+
+  const selectTradeIndexMode = (mode: "date" | "token") => {
+    setTradeContextMenu(null);
+    setTradeIndexMode(mode);
+    setSelectedTradeIndex(null);
   };
 
   const openTradeContextMenu = (
@@ -2552,7 +2580,7 @@ export function TradeReplay() {
         : [];
     setActiveProfileId(nextProfile.id);
     setTradeContextMenu(null);
-    setSelectedDate(null);
+    setSelectedTradeIndex(null);
     setSelectedId(visible[0]?.id ?? DEFAULT_TRADES[0].id);
     setPlaying(false);
     setImportNotice("");
@@ -2570,7 +2598,7 @@ export function TradeReplay() {
       setProfiles((current) => [...current, profile]);
       closeProfileDialog();
       setActiveProfileId(profile.id);
-      setSelectedDate(null);
+      setSelectedTradeIndex(null);
       setSelectedId(DEFAULT_TRADES[0].id);
       setPlaying(false);
       setImportNotice(`已新建复盘用户“${profile.name}”；后续导入会只保存到该用户。`);
@@ -2609,7 +2637,7 @@ export function TradeReplay() {
       setOrderArchive(nextOrders);
       setTrades(nextTrades);
       setActiveProfileId(DEFAULT_TRADE_PROFILE_ID);
-      setSelectedDate(null);
+      setSelectedTradeIndex(null);
       setSelectedId(DEFAULT_TRADES[0].id);
       setPlaying(false);
       setImportNotice(`已删除复盘用户“${activeProfile.name}”及其本机订单和复盘记录。`);
@@ -2655,7 +2683,7 @@ export function TradeReplay() {
       tradesRef.current = removal.trades;
       setOrderArchive(removal.orders);
       setTrades(removal.trades);
-      setSelectedDate(null);
+      setSelectedTradeIndex(null);
       setPlaying(false);
 
       if (selectedId === targetTrade.id) {
@@ -2751,7 +2779,7 @@ export function TradeReplay() {
         matchedOrders,
       )[0] as ReplayTrade;
     }));
-    setSelectedDate(null);
+    setSelectedTradeIndex(null);
     setSelectedId(orders[0].matchedTradeId);
     setActiveModule("replay");
     setPlaying(false);
@@ -2798,7 +2826,7 @@ export function TradeReplay() {
     setTrades(nextTrades);
     setActiveProfileId(selfProfile.id);
     if (reconstruction.trades[0]) setSelectedId(reconstruction.trades[0].id);
-    setSelectedDate(null);
+    setSelectedTradeIndex(null);
     setActiveModule("replay");
     setPlaying(false);
 
@@ -2851,7 +2879,7 @@ export function TradeReplay() {
     setTrades(nextTrades);
     setActiveProfileId(selfProfile.id);
     if (reconstruction.trades[0]) setSelectedId(reconstruction.trades[0].id);
-    setSelectedDate(null);
+    setSelectedTradeIndex(null);
     setActiveModule("replay");
     setPlaying(false);
 
@@ -2893,7 +2921,7 @@ export function TradeReplay() {
 
     setTrades((current) => mergeImportedReplays(current, reconstruction.trades));
     if (reconstruction.trades[0]) setSelectedId(reconstruction.trades[0].id);
-    setSelectedDate(null);
+    setSelectedTradeIndex(null);
     setActiveModule("replay");
     setPlaying(false);
 
@@ -2922,7 +2950,7 @@ export function TradeReplay() {
     const reconstruction = reconstructReplayableBinanceOrders(profileOrders);
     setTrades((current) => mergeImportedReplays(current, reconstruction.trades));
     if (reconstruction.trades[0]) setSelectedId(reconstruction.trades[0].id);
-    setSelectedDate(null);
+    setSelectedTradeIndex(null);
     setActiveModule("replay");
     setPlaying(false);
     const pendingText = reconstruction.warnings.length
@@ -3162,7 +3190,7 @@ export function TradeReplay() {
           setSelectedId(reconstruction.trades[0].id);
         }
         setActiveProfileId(syncProfile.id);
-        setSelectedDate(null);
+        setSelectedTradeIndex(null);
         setActiveModule("replay");
         setPlaying(false);
       }
@@ -3233,7 +3261,7 @@ export function TradeReplay() {
 
       setProfiles(nextProfiles);
       setActiveProfileId(targetProfile.id);
-      setSelectedDate(null);
+      setSelectedTradeIndex(null);
       setPlaying(false);
       await handlePublicLeadSync(targetProfile, targetProfile.copyTradeMonitor, {
         fullHistory: true,
@@ -3524,32 +3552,45 @@ export function TradeReplay() {
               </button>
             </div>
           </div>
-          <div className="date-filter" role="group" aria-label="按最终平仓日期或星标筛选">
+          <div className="trade-index-mode" role="group" aria-label="交易索引方式">
+            <button type="button" className={tradeIndexMode === "date" ? "active" : ""}
+              aria-pressed={tradeIndexMode === "date"} onClick={() => selectTradeIndexMode("date")}>按日期</button>
+            <button type="button" className={tradeIndexMode === "token" ? "active" : ""}
+              aria-pressed={tradeIndexMode === "token"} onClick={() => selectTradeIndexMode("token")}>按代币</button>
+          </div>
+          <div className="date-filter" role="group" aria-label={tradeIndexMode === "token" ? "按代币或星标筛选" : "按最终平仓日期或星标筛选"}>
             <button
-              className={`date-filter-button ${selectedDate === null ? "active" : ""}`}
-              onClick={() => selectCloseDate(null)}
-              aria-pressed={selectedDate === null}
+              className={`date-filter-button ${selectedTradeIndex === null ? "active" : ""}`}
+              onClick={() => selectTradeIndex(null)}
+              aria-pressed={selectedTradeIndex === null}
             >
               <span className="date-filter-label">全部</span>
               <span className="date-filter-count">{archiveTrades.length}</span>
             </button>
             <button
-              className={`date-filter-button ${selectedDate === STARRED_TRADE_FILTER ? "active" : ""}`}
-              onClick={() => selectCloseDate(STARRED_TRADE_FILTER)}
-              aria-pressed={selectedDate === STARRED_TRADE_FILTER}
+              className={`date-filter-button ${selectedTradeIndex === STARRED_TRADE_FILTER ? "active" : ""}`}
+              onClick={() => selectTradeIndex(STARRED_TRADE_FILTER)}
+              aria-pressed={selectedTradeIndex === STARRED_TRADE_FILTER}
               disabled={starredTrades.length === 0}
             >
               <span className="date-filter-label">星标</span>
               <span className="date-filter-count">{starredTrades.length}</span>
             </button>
-            {closeDateGroups.map((group) => (
+            {tradeIndexMode === "date" ? closeDateGroups.map((group) => (
               <button
                 key={group.date}
-                className={`date-filter-button ${selectedDate === group.date ? "active" : ""}`}
-                onClick={() => selectCloseDate(group.date)}
-                aria-pressed={selectedDate === group.date}
+                className={`date-filter-button ${selectedTradeIndex === group.date ? "active" : ""}`}
+                onClick={() => selectTradeIndex(group.date)}
+                aria-pressed={selectedTradeIndex === group.date}
               >
                 <span className="date-filter-label">{group.date}</span>
+                <span className="date-filter-count">{group.count}</span>
+              </button>
+            )) : tokenGroups.map((group) => (
+              <button key={group.token}
+                className={`date-filter-button ${selectedTradeIndex === group.token ? "active" : ""}`}
+                onClick={() => selectTradeIndex(group.token)} aria-pressed={selectedTradeIndex === group.token}>
+                <span className="date-filter-label">{group.token}</span>
                 <span className="date-filter-count">{group.count}</span>
               </button>
             ))}
@@ -3610,7 +3651,7 @@ export function TradeReplay() {
               );
             })}
             {filteredTrades.length === 0 && (
-              <div className="date-filter-empty">该日期暂无复盘</div>
+              <div className="date-filter-empty">{tradeIndexMode === "token" ? "该代币暂无复盘" : "该日期暂无复盘"}</div>
             )}
           </div>
           <div className="import-hint">

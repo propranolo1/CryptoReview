@@ -7,6 +7,7 @@ import * as indicators from "../lib/indicators.mjs";
 import * as risk from "../lib/risk.mjs";
 import * as history from "../lib/replay-history.mjs";
 import * as markers from "../lib/replay-markers.mjs";
+import * as rings from "../lib/replay-marker-rings.mjs";
 
 // 执行真实图表组件的 effects；只替换浏览器容器、React 调度和图表绘制接口。
 async function chartHarness() {
@@ -22,7 +23,7 @@ async function chartHarness() {
   const handlers = new Map();
   const container = { clientWidth: 1000, addEventListener: (name, handler) => handlers.set(name, handler), removeEventListener: (name) => handlers.delete(name) };
   const state = { range: { from: 0, to: 2 }, fits: 0, scrolls: 0, series: [], markers: [], subscriber: null,
-    timeScaleOptions: { shiftVisibleRangeOnNewBar: true }, buttons: [], animatedScrolls: 0, autoScales: 0 };
+    timeScaleOptions: { shiftVisibleRangeOnNewBar: true }, buttons: [], animatedScrolls: 0, autoScales: 0, ringMarkers: [] };
   const timeScale = {
     applyOptions: (options) => Object.assign(state.timeScaleOptions, options),
     getVisibleLogicalRange: () => state.range,
@@ -42,6 +43,10 @@ async function chartHarness() {
     timeScale: () => timeScale, applyOptions() {}, remove() {}, panes: () => Array.from({ length: 5 }, () => ({ setStretchFactor() {} })),
     addSeries: () => {
       const series = { data: [], priceScale: () => ({ applyOptions(options) { if (options.autoScale) state.autoScales += 1; } }), createPriceLine: () => ({}), removePriceLine() {},
+        attachPrimitive(primitive) {
+          const original = primitive.setMarkers;
+          primitive.setMarkers = (value) => { state.ringMarkers = value; original(value); };
+        },
         setData(data) { this.data = data; },
         update(point) {
           if (this.data.at(-1)?.time === point.time) this.data[this.data.length - 1] = point;
@@ -62,7 +67,7 @@ async function chartHarness() {
     createSeriesMarkers: () => ({ setMarkers: (value) => { state.markers = value; } }),
   };
   const dependencies = {
-    ...replay, ...indicators, ...risk, ...history, ...markers,
+    ...replay, ...indicators, ...risk, ...history, ...markers, ...rings,
     formatPrice: String, INDICATOR_PANE_LABELS: {},
     require: () => library,
     ResizeObserver: class { observe() {} disconnect() {} },
@@ -73,6 +78,7 @@ async function chartHarness() {
     setTimeout: (handler) => { const id = {}; timers.set(id, handler); return id; },
     clearTimeout: (id) => timers.delete(id),
     useRef: (value) => { const index = hookIndex++; return hooks[index] ??= { current: value }; },
+    useMemo: (fn) => fn(),
     useState: (value) => { const index = hookIndex++; if (!(index in hooks)) hooks[index] = value; return [hooks[index], (next) => { hooks[index] = next; }]; },
     useEffect: (effect, deps) => {
       const index = hookIndex++;
@@ -103,7 +109,7 @@ async function chartHarness() {
   };
 }
 
-test("真实组件拖到左边加载历史，前插后视口不跳、回放不穿越未来且箭头按次数合并", async () => {
+test("真实组件前插历史保持视口和回放时间，同根成交圆环按数量合并", async () => {
   const harness = await chartHarness();
   const candle = (index) => ({ time: 1000000 + index * 300, open: 100, high: 105, low: 95, close: 102, volume: 100, closeTime: (1000000 + (index + 1) * 300) * 1000 - 1 });
   const candles = Array.from({ length: 5 }, (_, index) => candle(index));
@@ -124,7 +130,9 @@ test("真实组件拖到左边加载历史，前插后视口不跳、回放不�
   assert.equal(loads, 0, "初始显示不能自行不断加载");
   assert.equal(harness.state.fits, 1);
   assert.equal(harness.state.markers.length, 1);
-  assert.equal(harness.state.markers[0].text, "3x");
+  assert.equal(harness.state.markers[0].text, "");
+  assert.equal(harness.state.ringMarkers[0].ratio, 1);
+  assert.equal(harness.state.ringMarkers[0].anchorPrice, props.currentCandle.low);
   harness.drag({ from: -10.5, to: 1.5 });
   harness.flush();
   assert.equal(loads, 1);
@@ -162,6 +170,33 @@ function playbackProps() {
     trade: { id: "drag-fixture", symbol: "BTCUSDT", side: "long", quantity: 1, entryPrice: 100,
       entryTime: new Date(candles[2].time * 1000).toISOString(), fee: 0, exits: [] } };
 }
+
+test("分批开空及减仓后再次加仓的圆环使用最大同时持仓量，而非累计开仓量", async () => {
+  const harness = await chartHarness();
+  let props = playbackProps();
+  const at = (index) => new Date(props.candles[index].time * 1000).toISOString();
+  props = { ...props, cursor: 5, currentCandle: replay.buildPartialCandle(props.candles[5], 1), candlePhase: 1,
+    trade: { ...props.trade, side: "short", quantity: 10,
+      entries: [{ quantity: 4, entryPrice: 100, entryTime: at(2) }, { quantity: 6, entryPrice: 100, entryTime: at(4) }],
+      exits: [{ quantity: 2, exitPrice: 99, exitTime: at(3) }, { quantity: 8, exitPrice: 99, exitTime: at(5) }] } };
+  await harness.render(props);
+  await harness.render(props);
+  assert.deepEqual(harness.state.ringMarkers.map(({ side, ratio }) => ({ side, ratio })), [
+    { side: "sell", ratio: 0.5 }, { side: "buy", ratio: 0.25 },
+    { side: "sell", ratio: 0.75 }, { side: "buy", ratio: 1 },
+  ]);
+  harness.dispose();
+});
+
+test("单笔建仓旧记录仍显示箭头，不追加百分比圆环", async () => {
+  const harness = await chartHarness();
+  const props = playbackProps();
+  await harness.render(props);
+  await harness.render(props);
+  assert.equal(harness.state.markers.length, 1);
+  assert.equal(harness.state.ringMarkers[0].ratio, null);
+  harness.dispose();
+});
 
 test("播放中向任意位置拖动后，最新柱仍可见也不回弹，柱内更新与新柱均保持视口", async () => {
   const harness = await chartHarness();

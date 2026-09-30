@@ -111,7 +111,7 @@ test("交易切换、平仓日期筛选与独立表现模块均保留回归锚�
   assert.match(component, /groupTradesByCloseDate/);
   assert.match(component, /filterTradesByCloseDate/);
   assert.match(component, /getTradeCloseTime/);
-  assert.match(component, /selectedDate/);
+  assert.match(component, /selectedTradeIndex/);
   assert.match(component, /activeModule/);
   assert.match(component, /交易回放/);
   assert.match(component, /交易表现/);
