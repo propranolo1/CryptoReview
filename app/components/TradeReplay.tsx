@@ -167,6 +167,7 @@ import { ReplayVideoExport } from "./ReplayVideoExport";
 import { FollowTradeImport } from "./FollowTradeImport";
 import { LeadPortfolioMonitor } from "./LeadPortfolioMonitor";
 import { SmartMoneyImport } from "./SmartMoneyImport";
+import { TradeHoverPreview } from "./TradeHoverPreview";
 
 type Candle = {
   time: number;
@@ -3595,7 +3596,7 @@ export function TradeReplay() {
               </button>
             ))}
           </div>
-          <div className="trade-list" role="list" aria-label="交易列表">
+          <TradeHoverPreview key={activeProfile.id} trades={filteredTrades}>
             {filteredTrades.map((item) => {
               const finalPnl = finalTradePnl(item);
               const positive = finalPnl.totalPnl >= 0;
@@ -3603,6 +3604,7 @@ export function TradeReplay() {
               return (
                 <button
                   key={item.id}
+                  data-preview-trade-id={item.id}
                   className={`trade-list-item ${item.id === trade.id ? "active" : ""}`}
                   onClick={() => selectTrade(item.id)}
                   onContextMenu={(event) => openTradeContextMenu(event, item)}
@@ -3653,7 +3655,7 @@ export function TradeReplay() {
             {filteredTrades.length === 0 && (
               <div className="date-filter-empty">{tradeIndexMode === "token" ? "该代币暂无复盘" : "该日期暂无复盘"}</div>
             )}
-          </div>
+          </TradeHoverPreview>
           <div className="import-hint">
             <FileUp size={17} />
             <div>

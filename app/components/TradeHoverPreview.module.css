@@ -1,0 +1,34 @@
+.preview {
+  position: fixed;
+  z-index: 110;
+  width: 380px;
+  height: 220px;
+  box-sizing: border-box;
+  padding: 10px 11px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--menu-bg, #fff);
+  color: var(--text);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+}
+
+.heading { height: 26px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.heading strong { font-size: 12px; white-space: nowrap; }
+.heading strong span { margin-left: 5px; font-size: 11px; }
+.heading > span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.chart { position: relative; width: 356px; height: 154px; }
+.chart svg { display: block; overflow: visible; }
+.holdingArea { fill: var(--amber-soft); opacity: 0.45; }
+.grid { stroke: var(--border-soft); stroke-width: 0.8; stroke-dasharray: 2 3; }
+.axis { fill: var(--muted); font-size: 8px; }
+.line { stroke: var(--text); stroke-width: 1.5; fill: none; stroke-linejoin: round; }
+.buy { color: #20aa78; }
+.sell { color: #ee6565; }
+.dot { fill: currentColor; stroke: var(--menu-bg, #fff); stroke-width: 1; }
+.marker { fill: currentColor; font-size: 10px; font-weight: 700; paint-order: stroke; stroke: var(--menu-bg, #fff); stroke-width: 3px; stroke-linejoin: round; }
+.chart g[tabindex] { cursor: help; outline: none; }
+.chart g[tabindex]:focus-visible .dot { stroke: var(--text); stroke-width: 2; }
+.markerTooltip { position: absolute; left: 8px; top: 4px; max-width: 290px; max-height: 118px; overflow: hidden; padding: 5px 7px; border: 1px solid var(--border-soft); border-radius: 5px; background: var(--menu-bg, #fff); color: var(--text); font-size: 10px; white-space: pre-line; pointer-events: none; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); }
+.footer { height: 18px; display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 9px; }
+.footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message { height: 172px; display: flex; align-items: center; justify-content: center; padding: 15px; text-align: center; color: var(--muted); font-size: 12px; }
