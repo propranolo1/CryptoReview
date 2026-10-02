@@ -3,6 +3,8 @@ import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { assetIconResponse, createAssetIconService } from "../lib/asset-icons.mjs";
+import { createDiskAssetIconCache } from "./asset-icon-cache.mjs";
 
 const DEFAULT_HOST = "127.0.0.1";
 const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
@@ -203,6 +205,10 @@ export async function startLocalServer(options = {}) {
   if (typeof fetchImpl !== "function") {
     throw new TypeError("桌面本地服务网络实现不可用");
   }
+  const iconService = createAssetIconService({
+    fetchImpl,
+    ...(options.assetIconCacheDirectory ? createDiskAssetIconCache(options.assetIconCacheDirectory) : {}),
+  });
 
   // vinext 的服务端路由在模块加载时捕获全局 fetch。先安装一个按请求上下文
   // 转发的桥接层，使桌面版行情请求与订单同步共用 Electron 网络会话与系统代理。
@@ -251,6 +257,10 @@ export async function startLocalServer(options = {}) {
       }
 
       const fetchRequest = createFetchRequest(request, origin);
+      if (new URL(fetchRequest.url).pathname === "/api/assets/icon") {
+        await sendFetchResponse(await assetIconResponse(fetchRequest, iconService), response, request.method);
+        return;
+      }
       const staticResponse = await createAssetResponse(clientRoot, fetchRequest);
       const fetchResponse = staticResponse.ok
         ? staticResponse
@@ -287,7 +297,7 @@ export async function startLocalServer(options = {}) {
             reject(error);
             return;
           }
-          Promise.allSettled([...pendingTasks]).then(() => resolve());
+          Promise.allSettled([...pendingTasks, iconService.settled()]).then(() => resolve());
         });
       });
       return closePromise;

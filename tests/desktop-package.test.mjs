@@ -99,10 +99,13 @@ test("本地架构文档与用户数据文件不会进入 Git 或桌面安装包
     "/orders.csv",
     "/debug.log",
     "/trade-export.mp4",
+    "/work/local-preview.png",
+    "/outputs/local-export.json",
   ]) {
     assert.equal(isPackagerIgnored(filePath), true, `${filePath} 必须排除在安装包外`);
   }
   assert.equal(isPackagerIgnored("/lib/replay.mjs"), true);
+  assert.equal(isPackagerIgnored("/lib/asset-icons.mjs"), false, "桌面图标服务必须进入安装包");
   assert.equal(
     isPackagerIgnored("/lib/exchange-sync.mjs"),
     false,

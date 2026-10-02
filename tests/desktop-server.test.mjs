@@ -124,7 +124,7 @@ test("Electron 启动时向桌面本地服务注入 net.fetch", async () => {
 
   assert.match(
     mainSource,
-    /startLocalServer\(\{\s*projectRoot: app\.getAppPath\(\),\s*fetchImpl: \(input, init\) => net\.fetch\(input, init\),\s*\}\)/,
+    /startLocalServer\(\{\s*projectRoot: app\.getAppPath\(\),\s*fetchImpl: \(input, init\) => net\.fetch\(input, init\),\s*assetIconCacheDirectory: path\.join\(app\.getPath\("userData"\), "cache", "asset-icons"\),\s*\}\)/,
   );
 });
 

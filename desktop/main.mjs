@@ -344,6 +344,7 @@ export async function bootstrapDesktopApp(electron) {
     localServer = await startLocalServer({
       projectRoot: app.getAppPath(),
       fetchImpl: (input, init) => net.fetch(input, init),
+      assetIconCacheDirectory: path.join(app.getPath("userData"), "cache", "asset-icons"),
     });
   } catch (error) {
     await smartMoneySessionService.dispose();

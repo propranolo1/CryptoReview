@@ -928,6 +928,25 @@ body:has(.replay-app.theme-light) {
   width: 25px;
   height: 25px;
   font-size: 11px;
+  position: relative;
+  flex: 0 0 25px;
+  overflow: hidden;
+}
+
+.asset-avatar.has-image {
+  background: transparent;
+}
+
+.asset-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.asset-avatar-image-loading {
+  visibility: hidden;
 }
 
 .trade-list-symbol {

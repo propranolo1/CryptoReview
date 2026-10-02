@@ -152,6 +152,7 @@ import {
   type FollowTradeEvent,
 } from "@/lib/follow-trade-records.mjs";
 import { PerformanceOverview } from "./PerformanceOverview";
+import { AssetAvatar } from "./AssetAvatar";
 import { AppUpdateControl } from "./AppUpdateControl";
 import {
   TrainingMode,
@@ -3614,7 +3615,7 @@ export function TradeReplay() {
                   title="右键打开交易操作菜单"
                 >
                   <div className="trade-list-top">
-                    <span className="asset-avatar">{normalizeSymbol(item.symbol).slice(0, 1)}</span>
+                    <AssetAvatar symbol={item.symbol} />
                     <span className="trade-list-symbol">{displaySymbol(item.symbol)}</span>
                     <span
                       className="trade-source-badge"
