@@ -299,6 +299,7 @@ declare global {
       listener: (progress: ExchangeSyncProgress) => void,
     ): () => void;
     removeOkxApi(): Promise<OkxApiStatus>;
+    clearSmartMoneySession(): Promise<{ cleared: true }>;
     authorizeSmartMoney(options: {
       sourceUrl: string;
       topTraderId: string;

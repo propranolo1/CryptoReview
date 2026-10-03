@@ -27,9 +27,8 @@ test("桌面入口和打包脚本使用 Electron 43 与 Electron Forge", async (
   assert.match(mainSource, /height:\s*1000/);
   assert.match(
     mainSource,
-    /session\.fromPartition\("cryptoreview-binance-smart-money"\)/,
+    /session\.fromPartition\("persist:cryptoreview-binance-smart-money"\)/,
   );
-  assert.doesNotMatch(mainSource, /fromPartition\("persist:.*smart-money/i);
 });
 
 test("桌面打包同时提供 Windows Squirrel 与 macOS ZIP 产物", async () => {

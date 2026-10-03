@@ -22,6 +22,12 @@ export function SmartMoneyImport({
   const [sourceUrl, setSourceUrl] = useState(DEFAULT_SMART_MONEY_SOURCE_URL);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
+  const [loginNotice, setLoginNotice] = useState("");
+  const [canClearLogin, setCanClearLogin] = useState(false);
+
+  useEffect(() => {
+    setCanClearLogin(Boolean(window.cryptoReviewDesktop?.clearSmartMoneySession));
+  }, []);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -33,6 +39,7 @@ export function SmartMoneyImport({
   const closeDialog = () => {
     setOpen(false);
     setError("");
+    setLoginNotice("");
     window.setTimeout(() => triggerRef.current?.focus(), 0);
   };
 
@@ -44,6 +51,19 @@ export function SmartMoneyImport({
       closeDialog();
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "聪明钱主页同步失败");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const clearLogin = async () => {
+    try {
+      setSyncing(true);
+      setError("");
+      await window.cryptoReviewDesktop?.clearSmartMoneySession();
+      setLoginNotice("已退出 Binance 登录，下次同步时需要重新登录。");
+    } catch {
+      setError("退出 Binance 登录失败，请稍后重试。");
     } finally {
       setSyncing(false);
     }
@@ -112,15 +132,16 @@ export function SmartMoneyImport({
                 autoComplete="off"
               />
               <small>
-                软件会打开隔离的 Binance 登录窗口；登录成功后会自动继续同步并关闭窗口，登录信息仅在本次运行有效。
+                软件会复用本机 Binance 登录；需要时打开官网窗口，登录后自动同步并隐藏窗口。登录会在本机保留，可在窗口菜单退出并清除。
               </small>
             </label>
 
             {error && <p className={styles.error} role="alert">{error}</p>}
+            {loginNotice && <p role="status">{loginNotice}</p>}
           </section>
 
           <footer>
-            <div />
+            <div>{canClearLogin && <button type="button" onClick={() => void clearLogin()} disabled={syncing}>退出 Binance 登录</button>}</div>
             <div>
               <button type="button" onClick={closeDialog} disabled={syncing}>取消</button>
               <button

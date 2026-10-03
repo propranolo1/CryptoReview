@@ -37,7 +37,8 @@ test("导入菜单可以通过聪明钱 URL 自动建用户并优先同步共享
   assert.match(importer, /创建独立本地用户/);
   assert.match(importer, /smart-money\/profile/);
   assert.match(importer, /最近 30 天/);
-  assert.match(importer, /登录成功后会自动继续同步/);
+  assert.match(importer, /登录后自动同步并隐藏窗口/);
+  assert.match(importer, /登录会在本机保留/);
   assert.match(monitor, /profile\.smartMoneySource\?\.sourceUrl\s*\?\?/);
   assert.match(monitor, /登录并同步聪明钱/);
   assert.match(preload, /desktop:smart-money-authorize/);

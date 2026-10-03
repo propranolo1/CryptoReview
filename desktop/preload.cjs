@@ -89,6 +89,7 @@ contextBridge.exposeInMainWorld("cryptoReviewDesktop", Object.freeze({
   },
   removeBinanceApi: () => ipcRenderer.invoke("desktop:binance-api-remove"),
   getOkxApiStatus: () => ipcRenderer.invoke("desktop:okx-api-status"),
+  clearSmartMoneySession: () => ipcRenderer.invoke("desktop:smart-money-logout"),
   configureOkxApi: (credentials) => {
     const value = requireRecord(credentials, "OKX API 凭证");
     return ipcRenderer.invoke("desktop:okx-api-configure", {

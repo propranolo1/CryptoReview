@@ -32,6 +32,7 @@ const IPC_CHANNELS = [
   "desktop:okx-api-remove",
   "desktop:smart-money-authorize",
   "desktop:smart-money-sync-latest-records",
+  "desktop:smart-money-logout",
   "desktop:video-export-begin",
   "desktop:video-export-append",
   "desktop:video-export-complete",
@@ -200,6 +201,10 @@ export function registerDesktopIpc({
     trustedHandler((options) => smartMoneySessionService.syncLatestRecords(options)),
   );
   ipcMain.handle(
+    "desktop:smart-money-logout",
+    trustedHandler(() => smartMoneySessionService.logout()),
+  );
+  ipcMain.handle(
     "desktop:video-export-begin",
     trustedHandler((options) => videoExportService.begin(options)),
   );
@@ -282,6 +287,7 @@ export async function bootstrapDesktopApp(electron) {
     autoUpdater,
     BrowserWindow,
     dialog,
+    Menu,
     ipcMain,
     net,
     safeStorage,
@@ -337,7 +343,8 @@ export async function bootstrapDesktopApp(electron) {
   });
   const smartMoneySessionService = createSmartMoneySessionService({
     BrowserWindow,
-    browserSession: session.fromPartition("cryptoreview-binance-smart-money"),
+    Menu,
+    browserSession: session.fromPartition("persist:cryptoreview-binance-smart-money"),
   });
   let localServer;
   try {
@@ -370,6 +377,9 @@ export async function bootstrapDesktopApp(electron) {
     shell,
     localOrigin: localServer.origin,
   });
+  mainWindow.once("closed", () => {
+    if (process.platform !== "darwin") app.quit();
+  });
   updateService.start();
   let cleanupPromise = null;
 
@@ -386,7 +396,7 @@ export async function bootstrapDesktopApp(electron) {
   };
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
       mainWindow = createMainWindow({
         BrowserWindow,
         shell,

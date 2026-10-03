@@ -3011,14 +3011,14 @@ export function TradeReplay() {
         (smartMoneySource?.sharingPosition || smartMoneySource?.sharingLatestRecord) &&
         desktopApi?.syncSmartMoneyLatestRecords
       ) {
-        let latestResult = await desktopApi.syncSmartMoneyLatestRecords({
+        let latestResult = options.authorizeSmartMoney ? null : await desktopApi.syncSmartMoneyLatestRecords({
           topTraderId: smartMoneySource.topTraderId,
           includePositions: smartMoneySource.sharingPosition,
           includeLatestRecords: smartMoneySource.sharingLatestRecord,
         });
-        if (latestResult.authorizationRequired && options.authorizeSmartMoney) {
+        if (!latestResult) {
           setImportNotice(
-            "请在弹出的 Binance 窗口完成登录；登录成功后软件会自动读取并关闭窗口。",
+            "请在弹出的 Binance 官网窗口完成登录；随后自动同步并保留本机登录。",
           );
           const authorization = await desktopApi.authorizeSmartMoney({
             sourceUrl: smartMoneySource.sourceUrl,

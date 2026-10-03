@@ -1,346 +1,208 @@
-const BINANCE_LATEST_RECORDS_API =
-  "https://www.binance.com/bapi/asset/v1/private/future/smart-money/profile/query-order-history";
-const BINANCE_CURRENT_POSITIONS_API =
-  "https://www.binance.com/bapi/asset/v1/private/future/smart-money/profile/query-positions";
+import { createSmartMoneyPageSource } from "./smart-money-page-source.mjs";
+
 const TOP_TRADER_ID_PATTERN = /^\d{12,24}$/;
 const SYMBOL_PATTERN = /^[A-Z0-9]{4,30}$/;
 const LATEST_RECORD_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-const PAGE_SIZE = 10;
-const POSITION_PAGE_SIZE = 9;
 const MAX_PAGES = 100;
-const AUTHORIZATION_POLL_INTERVAL_MS = 1_000;
-const BINANCE_ISOLATED_WORLD_ID = 1_001;
 
 export function isAllowedBinanceNavigation(targetUrl) {
   try {
     const url = new URL(targetUrl);
     const hostname = url.hostname.toLowerCase();
-    return (
-      url.protocol === "https:" &&
-      (hostname === "binance.com" || hostname.endsWith(".binance.com"))
-    );
-  } catch {
-    return false;
-  }
-}
-
-function createBinancePageFetchCode(targetUrl) {
-  const serializedUrl = JSON.stringify(String(targetUrl));
-  return `(async () => {
-    const response = await fetch(${serializedUrl}, {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-      headers: { Accept: "application/json", Clienttype: "web" },
-    });
-    let payload = null;
-    try { payload = await response.json(); } catch {}
-    return { status: response.status, ok: response.ok, payload };
-  })()`;
-}
-
-function isBrowserFetchResult(value) {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    Number.isInteger(value.status) &&
-    value.status >= 100 &&
-    value.status <= 599 &&
-    typeof value.ok === "boolean" &&
-    Object.prototype.hasOwnProperty.call(value, "payload"),
-  );
+    return url.protocol === "https:" && !url.username && !url.password &&
+      (hostname === "binance.com" || hostname.endsWith(".binance.com"));
+  } catch { return false; }
 }
 
 export function createSmartMoneySessionService({
-  browserSession,
-  BrowserWindow,
-  now = () => Date.now(),
+  browserSession, BrowserWindow, Menu, now = () => Date.now(),
+  syncTimeoutMs = 30_000, authorizationTimeoutMs = 5 * 60_000, driveIntervalMs = 400,
 }) {
-  if (!browserSession || typeof browserSession.fetch !== "function") {
+  if (!browserSession || typeof BrowserWindow !== "function") {
     throw new TypeError("Binance 网页会话不可用");
   }
-  if (typeof BrowserWindow !== "function") {
-    throw new TypeError("Binance 登录窗口不可用");
-  }
-  browserSession.setPermissionRequestHandler?.((_webContents, _permission, callback) => {
-    callback(false);
-  });
+  browserSession.setPermissionRequestHandler?.((_contents, _permission, callback) => callback(false));
   browserSession.setPermissionCheckHandler?.(() => false);
-
   let loginWindow = null;
-  let loginPromise = null;
+  let operation = null;
+  let disposing = false;
+  let clearingSession = false;
+  let activeSource = null;
 
-  const fetchBinanceJson = async (url) => {
-    const activeWindow = loginWindow;
-    const contents = activeWindow?.webContents;
-    const currentUrl = contents?.getURL?.() ?? "";
-    if (
-      activeWindow &&
-      !activeWindow.isDestroyed?.() &&
-      isAllowedBinanceNavigation(currentUrl) &&
-      typeof contents.executeJavaScriptInIsolatedWorld === "function"
-    ) {
-      try {
-        const result = await contents.executeJavaScriptInIsolatedWorld(
-          BINANCE_ISOLATED_WORLD_ID,
-          [{ code: createBinancePageFetchCode(url) }],
-        );
-        if (isBrowserFetchResult(result)) return result;
-      } catch {
-        // 页面切换期间执行可能失败，继续使用同一隔离 Session 请求。
-      }
-    }
-
-    const response = await browserSession.fetch(url, {
-      method: "GET",
-      credentials: "include",
-      useSessionCookies: true,
-      headers: {
-        Accept: "application/json",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
-        Clienttype: "web",
+  const createWindow = (interactive) => {
+    if (loginWindow && !loginWindow.isDestroyed()) return loginWindow;
+    const window = new BrowserWindow({
+      width: 1280, height: 860, minWidth: 960, minHeight: 680,
+      show: interactive, backgroundColor: "#0b0e11",
+      title: "Binance 登录与同步 · CryptoReview",
+      webPreferences: {
+        contextIsolation: true, sandbox: true, nodeIntegration: false,
+        webSecurity: true, backgroundThrottling: false, session: browserSession,
       },
     });
-    return {
-      status: response.status,
-      ok: response.ok,
-      payload: await response.json().catch(() => null),
+    loginWindow = window;
+    const contents = window.webContents;
+    const guardNavigation = (event, url) => {
+      if (!isAllowedBinanceNavigation(url)) event.preventDefault();
     };
-  };
-
-  const authorize = ({
-    sourceUrl,
-    topTraderId: inputTopTraderId,
-    includePositions: inputIncludePositions = true,
-    includeLatestRecords: inputIncludeLatestRecords = true,
-  } = {}) => {
-    const topTraderId = requireTopTraderId(inputTopTraderId ?? sourceUrl);
-    const targetUrl = normalizeProfileUrl(sourceUrl, topTraderId);
-    const includePositions = inputIncludePositions !== false;
-    const includeLatestRecords = inputIncludeLatestRecords !== false;
-    if (loginWindow && !loginWindow.isDestroyed?.()) {
-      loginWindow.focus?.();
-      return loginPromise;
-    }
-
-    loginPromise = new Promise((resolve, reject) => {
-      let authorizationTimer = null;
-      let checkingAuthorization = false;
-      let settled = false;
-      const window = new BrowserWindow({
-        width: 1280,
-        height: 860,
-        minWidth: 960,
-        minHeight: 680,
-        show: false,
-        autoHideMenuBar: true,
-        backgroundColor: "#0b0e11",
-        title: "Binance 登录 · CryptoReview",
-        webPreferences: {
-          contextIsolation: true,
-          sandbox: true,
-          nodeIntegration: false,
-          webSecurity: true,
-          session: browserSession,
-        },
-      });
-      loginWindow = window;
-      const contents = window.webContents;
-      const guardNavigation = (event, url) => {
-        if (!isAllowedBinanceNavigation(url)) event.preventDefault();
-      };
-      const cleanupAuthorizationCheck = () => {
-        if (authorizationTimer !== null) clearTimeout(authorizationTimer);
-        authorizationTimer = null;
-        contents.removeListener?.("did-finish-load", checkAuthorization);
-      };
-      const finishAuthorization = (result) => {
-        if (settled) return;
-        settled = true;
-        cleanupAuthorizationCheck();
-        resolve(result);
-      };
-      const failAuthorization = (error) => {
-        if (settled) return;
-        settled = true;
-        cleanupAuthorizationCheck();
-        reject(error);
-        if (!window.isDestroyed?.()) window.close?.();
-      };
-      const scheduleAuthorizationCheck = () => {
-        if (settled || window.isDestroyed?.() || authorizationTimer !== null) return;
-        authorizationTimer = setTimeout(() => {
-          authorizationTimer = null;
-          void checkAuthorization();
-        }, AUTHORIZATION_POLL_INTERVAL_MS);
-      };
-      const checkAuthorization = async () => {
-        if (settled || window.isDestroyed?.() || checkingAuthorization) return;
-        checkingAuthorization = true;
-        try {
-          const syncResult = await syncLatestRecords({
-            topTraderId,
-            includePositions,
-            includeLatestRecords,
-          });
-          if (!syncResult.authorizationRequired) {
-            finishAuthorization({ completed: true, syncResult });
-            if (!window.isDestroyed?.()) window.close?.();
-            return;
-          }
-        } catch (error) {
-          failAuthorization(error);
-          return;
-        } finally {
-          checkingAuthorization = false;
-        }
-        scheduleAuthorizationCheck();
-      };
-      contents.on("will-navigate", guardNavigation);
-      contents.on("will-redirect", guardNavigation);
-      contents.on("will-attach-webview", (event) => event.preventDefault());
-      contents.on("did-finish-load", checkAuthorization);
-      contents.setWindowOpenHandler(() => ({ action: "deny" }));
-      window.once("ready-to-show", () => window.show());
-      window.once("closed", () => {
-        loginWindow = null;
-        loginPromise = null;
-        if (!settled) finishAuthorization({ completed: false });
-      });
-      Promise.resolve(window.loadURL(targetUrl))
-        .then(() => void checkAuthorization())
-        .catch((error) => {
-          loginWindow = null;
-          loginPromise = null;
-          failAuthorization(new Error(
-            error instanceof Error && error.message
-              ? `Binance 登录页面打开失败：${error.message}`
-              : "Binance 登录页面打开失败。",
-          ));
-        });
+    contents.on("will-navigate", guardNavigation);
+    contents.on("will-redirect", guardNavigation);
+    contents.on("will-attach-webview", (event) => event.preventDefault());
+    contents.setWindowOpenHandler(() => ({ action: "deny" }));
+    window.on("page-title-updated", (event) => event.preventDefault());
+    window.on("close", (event) => {
+      if (!disposing && !operation) { event.preventDefault(); window.hide(); }
     });
-    return loginPromise;
-  };
-
-  const syncLatestRecords = async ({
-    topTraderId: inputTopTraderId,
-    includePositions: inputIncludePositions = true,
-    includeLatestRecords: inputIncludeLatestRecords = true,
-  } = {}) => {
-    const topTraderId = requireTopTraderId(inputTopTraderId);
-    const includePositions = inputIncludePositions !== false;
-    const includeLatestRecords = inputIncludeLatestRecords !== false;
-    const endTime = Math.floor(now());
-    if (!Number.isSafeInteger(endTime) || endTime <= 0) {
-      throw new TypeError("本机时间无效，无法读取 Binance 聪明钱数据");
-    }
-    const startTime = endTime - LATEST_RECORD_WINDOW_MS;
-    const positionsByKey = new Map();
-    const recordsByKey = new Map();
-    let positionsTruncated = false;
-    let page = 1;
-    let truncated = false;
-
-    if (includePositions) {
-      for (let positionPage = 1; positionPage <= MAX_PAGES; positionPage += 1) {
-        const url = new URL(BINANCE_CURRENT_POSITIONS_API);
-        url.searchParams.set("topTraderId", topTraderId);
-        url.searchParams.set("marketType", "UM");
-        url.searchParams.set("rows", String(POSITION_PAGE_SIZE));
-        url.searchParams.set("page", String(positionPage));
-        const response = await fetchBinanceJson(url.toString());
-
-        if (response.status === 401 || response.status === 403) {
-          return authorizationRequiredResult();
-        }
-        if (!response.ok) {
-          throw new Error(`Binance 当前仓位接口返回 ${response.status}，请稍后重试。`);
-        }
-        const payload = response.payload;
-        if (isAuthorizationPayload(payload)) return authorizationRequiredResult();
-        if (isFailedPayload(payload)) {
-          throw new Error(formatBinanceMessage(payload));
-        }
-        const rawPositions = extractRecordRows(payload);
-        for (const rawPosition of rawPositions) {
-          const position = normalizeCurrentPosition(rawPosition);
-          if (position) positionsByKey.set(stablePositionKey(position), position);
-        }
-        if (rawPositions.length < POSITION_PAGE_SIZE) break;
-        if (positionPage === MAX_PAGES) positionsTruncated = true;
-      }
-    }
-
-    if (includeLatestRecords) {
-      for (; page <= MAX_PAGES; page += 1) {
-        const url = new URL(BINANCE_LATEST_RECORDS_API);
-        url.searchParams.set("topTraderId", topTraderId);
-        url.searchParams.set("marketType", "UM");
-        url.searchParams.set("startTime", String(startTime));
-        url.searchParams.set("endTime", String(endTime));
-        url.searchParams.set("rows", String(PAGE_SIZE));
-        url.searchParams.set("page", String(page));
-        const response = await fetchBinanceJson(url.toString());
-
-        if (response.status === 401 || response.status === 403) {
-          return authorizationRequiredResult();
-        }
-        if (!response.ok) {
-          throw new Error(`Binance 最新操作记录接口返回 ${response.status}，请稍后重试。`);
-        }
-        const payload = response.payload;
-        if (isAuthorizationPayload(payload)) return authorizationRequiredResult();
-        if (isFailedPayload(payload)) {
-          throw new Error(formatBinanceMessage(payload));
-        }
-        const rawRecords = extractRecordRows(payload);
-        for (const rawRecord of rawRecords) {
-          const record = normalizeLatestRecord(rawRecord);
-          if (record) recordsByKey.set(stableRecordKey(record), record);
-        }
-        if (rawRecords.length < PAGE_SIZE) break;
-        if (page === MAX_PAGES) truncated = true;
-      }
-    }
-
-    const records = [...recordsByKey.values()].sort(
-      (left, right) => left.updateTime - right.updateTime ||
-        stableRecordKey(left).localeCompare(stableRecordKey(right)),
-    );
-    const positions = [...positionsByKey.values()].sort((left, right) =>
-      stablePositionKey(left).localeCompare(stablePositionKey(right)),
-    );
-    return {
-      authorizationRequired: false,
-      marketType: "UM",
-      startTime,
-      endTime,
-      fetchedAt: new Date(endTime).toISOString(),
-      positions,
-      records,
-      total: records.length,
-      truncated,
-      warnings: [
-        ...(includeLatestRecords ? [
-          "Binance 聪明钱最新操作记录仅覆盖最近 30 天，缺少更早开仓时无法重建完整交易。",
-          "最新操作记录不提供手续费，复盘手续费按未知处理。",
-        ] : []),
-        ...(positionsTruncated ? ["当前仓位超过 900 条，本次只读取前 900 条。"] : []),
-        ...(truncated ? ["最新操作记录超过 1,000 条，本次只读取前 1,000 条。"] : []),
+    window.once("closed", () => {
+      activeSource?.stop();
+      loginWindow = null;
+    });
+    if (Menu) window.setMenu(Menu.buildFromTemplate([{
+      label: "登录与同步",
+      submenu: [
+        { label: "重新打开聪明钱主页", click: () => {
+          if (operation) return;
+          const options = window.lastSyncOptions;
+          if (options) void window.loadURL(profileUrl(options.topTraderId)).catch(() => window.setTitle("页面打开失败，请稍后重试 · CryptoReview"));
+        } },
+        { type: "separator" },
+        { label: "退出登录并清除本机会话", click: () => void logout().catch(() => {
+          if (!window.isDestroyed()) window.setTitle("清除登录失败，请稍后重试 · CryptoReview");
+        }) },
+        { label: "隐藏窗口并保留登录", click: () => window.hide() },
       ],
-    };
+    }]));
+    return window;
   };
 
-  const dispose = async () => {
-    if (loginWindow && !loginWindow.isDestroyed?.()) loginWindow.close?.();
-    loginWindow = null;
-    loginPromise = null;
-    if (typeof browserSession.clearStorageData === "function") {
-      await browserSession.clearStorageData();
+  const begin = (options = {}, interactive) => {
+    if (disposing || clearingSession) return Promise.reject(new Error("正在退出 Binance 会话，请稍后重试。"));
+    const topTraderId = requireTopTraderId(options.topTraderId ?? options.sourceUrl);
+    const includePositions = options.includePositions !== false;
+    const includeLatestRecords = options.includeLatestRecords !== false;
+    const key = JSON.stringify([topTraderId, includePositions, includeLatestRecords]);
+    if (operation) {
+      if (operation.key !== key) return Promise.reject(new Error("另一个聪明钱主页正在同步，请完成后再试。"));
+      if (interactive) { loginWindow.show(); loginWindow.focus(); }
+      return interactive ? operation.promise.then((syncResult) => ({ completed: true, syncResult })) : operation.promise;
     }
+    const endTime = Math.floor(now());
+    if (!Number.isSafeInteger(endTime) || endTime <= 0) throw new TypeError("本机时间无效，无法读取 Binance 聪明钱数据");
+    const targetUrl = normalizeProfileUrl(options.sourceUrl, topTraderId);
+    const window = createWindow(interactive);
+    window.lastSyncOptions = { topTraderId, includePositions, includeLatestRecords };
+    if (interactive) { window.show(); window.focus(); }
+    window.setTitle?.(interactive ? "请完成 Binance 登录，随后自动同步 · CryptoReview" : "正在同步聪明钱 · CryptoReview");
+    const currentOperation = { key };
+    operation = currentOperation;
+    currentOperation.promise = (async () => {
+      let source;
+      try {
+        source = createSmartMoneyPageSource({
+          window, topTraderId, timeoutMs: interactive ? authorizationTimeoutMs : syncTimeoutMs, driveIntervalMs,
+        });
+        activeSource = source;
+        await source.open(targetUrl);
+        const syncResult = await collectSmartMoneyData({
+          source, topTraderId, includePositions, includeLatestRecords, endTime,
+        });
+        window.setTitle?.(syncResult.authorizationRequired ? "需要完成 Binance 登录 · CryptoReview" : "聪明钱同步完成 · CryptoReview");
+        window.hide();
+        return syncResult;
+      } finally {
+        source?.stop();
+        if (activeSource === source) activeSource = null;
+        if (operation === currentOperation) operation = null;
+      }
+    })();
+    if (!interactive) return currentOperation.promise;
+    return currentOperation.promise.then((syncResult) => ({ completed: true, syncResult })).catch((error) => {
+      if (window.isDestroyed()) return { completed: false };
+      window.setTitle?.("同步失败，可关闭窗口后重试 · CryptoReview");
+      throw error;
+    });
   };
+  const authorize = (options) => begin(options, true);
+  const syncLatestRecords = (options) => begin(options, false);
+  const flush = async () => {
+    browserSession.flushStorageData?.();
+    await browserSession.cookies?.flushStore?.();
+  };
+  const logout = async () => {
+    clearingSession = true;
+    try {
+      activeSource?.stop();
+      loginWindow?.destroy();
+      loginWindow = null;
+      await browserSession.clearStorageData();
+      await browserSession.clearCache?.();
+      await flush();
+      return { cleared: true };
+    } finally { clearingSession = false; }
+  };
+  const dispose = async () => {
+    disposing = true;
+    activeSource?.stop();
+    loginWindow?.destroy();
+    loginWindow = null;
+    await flush();
+  };
+  return { authorize, syncLatestRecords, logout, dispose };
+}
 
-  return { authorize, syncLatestRecords, dispose };
+async function collectSmartMoneyData({ source, includePositions, includeLatestRecords, endTime }) {
+  const startTime = endTime - LATEST_RECORD_WINDOW_MS;
+  const positionsByKey = new Map();
+  const recordsByKey = new Map();
+  let positionsTruncated = false;
+  let truncated = false;
+  for (const kind of ["positions", "order-history"]) {
+    if (kind === "positions" ? !includePositions : !includeLatestRecords) continue;
+    for (let page = 1; page <= MAX_PAGES; page += 1) {
+      const response = await source.readPage(kind, page);
+      if (response.status === 401) return authorizationRequiredResult();
+      if (!response.ok) throw new Error(response.status === 429
+        ? "Binance 请求过于频繁，请稍后重试；登录会话已保留。"
+        : response.status === 403 ? "Binance 暂时拒绝数据访问，请在官网确认权限后重试。"
+          : "Binance 官网数据暂时无法读取，请稍后重试。");
+      const payload = response.payload;
+      if (isAuthorizationPayload(payload)) return authorizationRequiredResult();
+      if (isFailedPayload(payload)) throw new Error("Binance 官网返回无效数据，请稍后重试。");
+      const rawRows = extractRecordRows(payload);
+      if (!rawRows) throw new Error("Binance 官网数据结构已变化，本次未保存同步结果。");
+      if (rawRows.length > 100) throw new Error("Binance 官网单页数据超出读取限制。");
+      for (const row of rawRows) {
+        if (kind === "positions") {
+          const position = normalizeCurrentPosition(row);
+          if (position) positionsByKey.set(stablePositionKey(position), position);
+        } else {
+          const record = normalizeLatestRecord(row);
+          if (record && record.updateTime >= startTime && record.updateTime <= endTime) recordsByKey.set(stableRecordKey(record), record);
+        }
+      }
+      const totalValue = payload.data?.total ?? payload.total;
+      const total = totalValue == null || totalValue === "" ? NaN : Number(totalValue);
+      if (rawRows.length < response.rows || (Number.isSafeInteger(total) && total >= 0 && page * response.rows >= total)) break;
+      if (page === MAX_PAGES) {
+        if (kind === "positions") positionsTruncated = true;
+        else truncated = true;
+      }
+    }
+  }
+  const records = [...recordsByKey.values()].sort((a, b) => a.updateTime - b.updateTime || stableRecordKey(a).localeCompare(stableRecordKey(b)));
+  const positions = [...positionsByKey.values()].sort((a, b) => stablePositionKey(a).localeCompare(stablePositionKey(b)));
+  return {
+    authorizationRequired: false, marketType: "UM", startTime, endTime,
+    fetchedAt: new Date(endTime).toISOString(), positions, records, total: records.length, truncated,
+    warnings: [
+      ...(includeLatestRecords ? [
+        "Binance 聪明钱最新操作记录仅覆盖最近 30 天，缺少更早开仓时无法重建完整交易。",
+        "最新操作记录不提供手续费，复盘手续费按未知处理。",
+      ] : []),
+      ...(positionsTruncated ? ["官网当前仓位未读取完，本次结果已截断。"] : []),
+      ...(truncated ? ["官网最新操作记录未读取完，本次结果已截断。"] : []),
+    ],
+  };
 }
 
 function normalizeCurrentPosition(value) {
@@ -432,14 +294,9 @@ function requireTopTraderId(value) {
 
 function normalizeProfileUrl(sourceUrl, topTraderId) {
   if (sourceUrl) {
-    const url = new URL(String(sourceUrl).trim());
-    if (
-      isAllowedBinanceNavigation(url.toString()) &&
-      requireTopTraderId(url.toString()) === topTraderId
-    ) {
-      return url.toString();
-    }
+    if (requireTopTraderId(sourceUrl) !== topTraderId) throw new TypeError("Binance 聪明钱主页 ID 不一致");
   }
+  // 固定到官网主页，不保留外部传入的登录回调或查询参数。
   return profileUrl(topTraderId);
 }
 
@@ -451,12 +308,12 @@ function extractRecordRows(payload) {
   let value = unwrapData(payload);
   for (let depth = 0; depth < 4; depth += 1) {
     if (Array.isArray(value)) return value;
-    if (!value || typeof value !== "object") return [];
+    if (!value || typeof value !== "object") return null;
     const candidate = value.data ?? value.list ?? value.rows ?? value.positions ?? value.orderHistory;
-    if (candidate === value) return [];
+    if (candidate === value) return null;
     value = candidate;
   }
-  return Array.isArray(value) ? value : [];
+  return Array.isArray(value) ? value : null;
 }
 
 function unwrapData(value) {
@@ -472,7 +329,7 @@ function isAuthorizationPayload(payload) {
 }
 
 function isFailedPayload(payload) {
-  return !payload || typeof payload !== "object" || payload.success === false;
+  return !payload || typeof payload !== "object" || Array.isArray(payload) || payload.success === false || (payload.code != null && String(payload.code) !== "000000" && String(payload.code) !== "0");
 }
 
 function authorizationRequiredResult() {
@@ -480,20 +337,6 @@ function authorizationRequiredResult() {
     authorizationRequired: true,
     message: "需要先在 Binance 登录窗口完成登录。",
   };
-}
-
-function formatBinanceMessage(payload) {
-  const raw = payload && typeof payload === "object"
-    ? payload.message ?? payload.messageDetail
-    : null;
-  const text = typeof raw === "string"
-    ? raw.trim()
-    : raw && typeof raw === "object"
-      ? Object.values(raw).find((item) => typeof item === "string" && item.trim())
-      : null;
-  return typeof text === "string" && text.trim()
-    ? text.trim().slice(0, 240)
-    : "Binance 最新操作记录返回无效数据，请稍后重试。";
 }
 
 function normalizePositionSide(value) {

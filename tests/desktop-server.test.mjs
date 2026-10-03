@@ -249,6 +249,10 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     },
   };
   const smartMoneySessionService = {
+    logout() {
+      calls.push(["smartMoneyLogout"]);
+      return { cleared: true };
+    },
     authorize(options) {
       calls.push(["smartMoneyAuthorize", options]);
       return { completed: true };
@@ -314,6 +318,7 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     "desktop:save-trades",
     "desktop:save-training-results",
     "desktop:smart-money-authorize",
+    "desktop:smart-money-logout",
     "desktop:smart-money-sync-latest-records",
     "desktop:update-check",
     "desktop:update-install",
@@ -486,6 +491,12 @@ test("Electron 主进程只注册约定的存储、交易所 API 与视频导出
     }),
     /不受信任/,
   );
+  await assert.rejects(
+    async () => handlers.get("desktop:smart-money-logout")({ senderFrame: { url: "https://evil.example/" } }),
+    /不受信任/,
+  );
+  assert.deepEqual(await handlers.get("desktop:smart-money-logout")(trustedEvent), { cleared: true });
+  assert.deepEqual(calls.at(-1), ["smartMoneyLogout"]);
   await assert.rejects(
     async () => handlers.get("desktop:video-export-begin")(
       { senderFrame: { url: "https://evil.example/" } },
