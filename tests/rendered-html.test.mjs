@@ -78,7 +78,9 @@ test("图表保持客户端边界且启动骨架已经移除", async () => {
   assert.match(component, /desktopApi\.saveTrades/);
   assert.doesNotMatch(component, /订单、复盘与训练成绩已保存至本机 SQLite/);
   assert.match(component, /parseTrades/);
-  assert.match(component, /calculateTradePnl/);
+  assert.match(component, /buildTradeListRows/);
+  const tradeList = await readFile(new URL("../lib/trade-list.mjs", import.meta.url), "utf8");
+  assert.match(tradeList, /calculateTradePnl\(trade, price\)/);
   assert.match(page, /<TradeReplay \/>/);
   assert.match(layout, /title:\s*"复盘舱 · CryptoReview"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
@@ -100,7 +102,7 @@ test("回放图表双击会按横坐标时间暂停并定位 K 线", async () =>
   assert.match(component, /locateReplayCandleAtTime/);
 });
 
-test("交易切换、平仓日期筛选与独立表现模块均保留回归锚点", async () => {
+test("交易切换、代币筛选和日期排序与独立表现模块均保留回归锚点", async () => {
   const [component, performance, performanceStyles, globals] = await Promise.all([
     readFile(new URL("../app/components/TradeReplay.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/PerformanceOverview.tsx", import.meta.url), "utf8"),
@@ -108,8 +110,8 @@ test("交易切换、平仓日期筛选与独立表现模块均保留回归锚�
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
-  assert.match(component, /groupTradesByCloseDate/);
-  assert.match(component, /filterTradesByCloseDate/);
+  assert.match(component, /filterTradesByToken/);
+  assert.match(component, /<TradeListControls/);
   assert.match(component, /getTradeCloseTime/);
   assert.match(component, /selectedTradeIndex/);
   assert.match(component, /activeModule/);

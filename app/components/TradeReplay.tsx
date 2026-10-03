@@ -49,7 +49,6 @@ import type {
   UTCTimestamp,
 } from "lightweight-charts";
 import {
-  calculateTradePnl,
   parseTrades,
   type NormalizedTrade,
   type TradePnlResult,
@@ -76,7 +75,7 @@ import {
 import { createReplayHistoryLoader, shiftReplayHistoryRange, type ReplayHistoryLoader } from "@/lib/replay-history.mjs";
 import { buildReplayTradeMarkers } from "@/lib/replay-markers.mjs";
 import { createReplayMarkerRings } from "@/lib/replay-marker-rings.mjs";
-import { filterTradesByToken, groupTradesByToken } from "@/lib/trade-index.mjs";
+import { filterTradesByToken } from "@/lib/trade-index.mjs";
 import { createHypeScreenshotTrade } from "@/lib/records.mjs";
 import {
   getReplayPriceLines,
@@ -116,11 +115,8 @@ import {
   reconcileBasicOrdersWithArchive,
   type ParsedBasicOrder,
 } from "@/lib/basic-orders.mjs";
-import {
-  filterTradesByCloseDate,
-  getTradeCloseTime,
-  groupTradesByCloseDate,
-} from "@/lib/performance.mjs";
+import { getTradeCloseTime } from "@/lib/performance.mjs";
+import { buildTradeListRows, summarizeTradeListByToken, type TradeListSort, type TradeListDirection } from "@/lib/trade-list.mjs";
 import {
   filterStarredReplayTrades,
   persistDesktopReplaySnapshot,
@@ -169,6 +165,7 @@ import { FollowTradeImport } from "./FollowTradeImport";
 import { LeadPortfolioMonitor } from "./LeadPortfolioMonitor";
 import { SmartMoneyImport } from "./SmartMoneyImport";
 import { TradeHoverPreview } from "./TradeHoverPreview";
+import { TradeListControls } from "./TradeListControls";
 
 type Candle = {
   time: number;
@@ -779,16 +776,6 @@ function sanitizeImportedTrade(
     syncSources: [syncSource],
   }], profile, { omitDefault: true });
   return profiledTrade as ReplayTrade;
-}
-
-function finalTradePnl(trade: ReplayTrade) {
-  const fallbackPrice =
-    trade.openPosition?.markPrice ?? trade.exits.at(-1)?.exitPrice ?? trade.entryPrice;
-  try {
-    return calculateTradePnl(trade, fallbackPrice);
-  } catch {
-    return EMPTY_PNL;
-  }
 }
 
 function CandleReplayChart({
@@ -1647,7 +1634,8 @@ export function TradeReplay() {
   const [dataNotice, setDataNotice] = useState("");
   const [importNotice, setImportNotice] = useState("");
   const [selectedTradeIndex, setSelectedTradeIndex] = useState<string | null>(null);
-  const [tradeIndexMode, setTradeIndexMode] = useState<"date" | "token">("date");
+  const [tradeSortBy, setTradeSortBy] = useState<TradeListSort>("date");
+  const [tradeSortDirection, setTradeSortDirection] = useState<TradeListDirection>("desc");
   const [hydrated, setHydrated] = useState(false);
   const [persistenceMode, setPersistenceMode] = useState<PersistenceMode>("loading");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1729,11 +1717,7 @@ export function TradeReplay() {
     ])].sort(),
     [activeProfileOrders, archiveTrades],
   );
-  const closeDateGroups = useMemo(
-    () => groupTradesByCloseDate(archiveTrades),
-    [archiveTrades],
-  );
-  const tokenGroups = useMemo(() => groupTradesByToken(archiveTrades), [archiveTrades]);
+  const tokenGroups = useMemo(() => summarizeTradeListByToken(archiveTrades), [archiveTrades]);
   const starredTrades = useMemo(
     () => filterStarredReplayTrades(archiveTrades),
     [archiveTrades],
@@ -1741,14 +1725,18 @@ export function TradeReplay() {
   const filteredTrades = useMemo(
     () => selectedTradeIndex === STARRED_TRADE_FILTER
       ? starredTrades
-      : tradeIndexMode === "token"
-        ? filterTradesByToken(archiveTrades, selectedTradeIndex)
-        : filterTradesByCloseDate(archiveTrades, selectedTradeIndex),
-    [archiveTrades, selectedTradeIndex, starredTrades, tradeIndexMode],
+      : filterTradesByToken(archiveTrades, selectedTradeIndex),
+    [archiveTrades, selectedTradeIndex, starredTrades],
   );
   const contextMenuTrade = tradeContextMenu
     ? archiveTrades.find((item) => item.id === tradeContextMenu.tradeId) ?? null
     : null;
+  const tradeListRows = useMemo(
+    () => buildTradeListRows(filteredTrades, { sortBy: tradeSortBy, direction: tradeSortDirection }),
+    [filteredTrades, tradeSortBy, tradeSortDirection],
+  );
+  const tradeListTotal = tradeListRows.some(row => row.pnl === null)
+    ? null : tradeListRows.reduce((sum, row) => sum + (row.pnl?.totalPnl ?? 0), 0);
   const cursor = replayFrame.cursor;
   const candlePhase = replayFrame.phase;
   const replayMarketDataKey = buildReplayMarketDataKey(trade, frame);
@@ -1769,9 +1757,7 @@ export function TradeReplay() {
     if (
       selectedTradeIndex &&
       selectedTradeIndex !== STARRED_TRADE_FILTER &&
-      !(tradeIndexMode === "token"
-        ? tokenGroups.some((group) => group.token === selectedTradeIndex)
-        : closeDateGroups.some((group) => group.date === selectedTradeIndex))
+      !tokenGroups.some((group) => group.token === selectedTradeIndex)
     ) {
       setSelectedTradeIndex(null);
       return;
@@ -1801,7 +1787,7 @@ export function TradeReplay() {
       setSelectedId(filteredTrades[0].id);
       setPlaying(false);
     }
-  }, [archiveTrades, closeDateGroups, tokenGroups, tradeIndexMode, filteredTrades, selectedTradeIndex, selectedId, starredTrades]);
+  }, [archiveTrades, tokenGroups, filteredTrades, selectedTradeIndex, selectedId, starredTrades]);
 
   useEffect(() => {
     if (!tradeContextMenu) return;
@@ -2492,16 +2478,8 @@ export function TradeReplay() {
     setSelectedTradeIndex(index);
     const firstTrade = index === STARRED_TRADE_FILTER
       ? starredTrades[0]
-      : tradeIndexMode === "token"
-        ? filterTradesByToken(archiveTrades, index)[0]
-        : filterTradesByCloseDate(archiveTrades, index)[0];
+      : filterTradesByToken(archiveTrades, index)[0];
     if (firstTrade) selectTrade(firstTrade.id);
-  };
-
-  const selectTradeIndexMode = (mode: "date" | "token") => {
-    setTradeContextMenu(null);
-    setTradeIndexMode(mode);
-    setSelectedTradeIndex(null);
   };
 
   const openTradeContextMenu = (
@@ -3554,59 +3532,33 @@ export function TradeReplay() {
               </button>
             </div>
           </div>
-          <div className="trade-index-mode" role="group" aria-label="交易索引方式">
-            <button type="button" className={tradeIndexMode === "date" ? "active" : ""}
-              aria-pressed={tradeIndexMode === "date"} onClick={() => selectTradeIndexMode("date")}>按日期</button>
-            <button type="button" className={tradeIndexMode === "token" ? "active" : ""}
-              aria-pressed={tradeIndexMode === "token"} onClick={() => selectTradeIndexMode("token")}>按代币</button>
-          </div>
-          <div className="date-filter" role="group" aria-label={tradeIndexMode === "token" ? "按代币或星标筛选" : "按最终平仓日期或星标筛选"}>
-            <button
-              className={`date-filter-button ${selectedTradeIndex === null ? "active" : ""}`}
-              onClick={() => selectTradeIndex(null)}
-              aria-pressed={selectedTradeIndex === null}
-            >
-              <span className="date-filter-label">全部</span>
-              <span className="date-filter-count">{archiveTrades.length}</span>
-            </button>
-            <button
-              className={`date-filter-button ${selectedTradeIndex === STARRED_TRADE_FILTER ? "active" : ""}`}
-              onClick={() => selectTradeIndex(STARRED_TRADE_FILTER)}
-              aria-pressed={selectedTradeIndex === STARRED_TRADE_FILTER}
-              disabled={starredTrades.length === 0}
-            >
-              <span className="date-filter-label">星标</span>
-              <span className="date-filter-count">{starredTrades.length}</span>
-            </button>
-            {tradeIndexMode === "date" ? closeDateGroups.map((group) => (
-              <button
-                key={group.date}
-                className={`date-filter-button ${selectedTradeIndex === group.date ? "active" : ""}`}
-                onClick={() => selectTradeIndex(group.date)}
-                aria-pressed={selectedTradeIndex === group.date}
-              >
-                <span className="date-filter-label">{group.date}</span>
-                <span className="date-filter-count">{group.count}</span>
-              </button>
-            )) : tokenGroups.map((group) => (
-              <button key={group.token}
-                className={`date-filter-button ${selectedTradeIndex === group.token ? "active" : ""}`}
-                onClick={() => selectTradeIndex(group.token)} aria-pressed={selectedTradeIndex === group.token}>
-                <span className="date-filter-label">{group.token}</span>
-                <span className="date-filter-count">{group.count}</span>
-              </button>
-            ))}
-          </div>
+          <TradeListControls key={activeProfile.id}
+            tokens={tokenGroups}
+            selectedToken={selectedTradeIndex === STARRED_TRADE_FILTER ? null : selectedTradeIndex}
+            starredOnly={selectedTradeIndex === STARRED_TRADE_FILTER}
+            starredCount={starredTrades.length}
+            sortBy={tradeSortBy} direction={tradeSortDirection}
+            tradeCount={filteredTrades.length} totalPnl={tradeListTotal}
+            formattedTotal={tradeListTotal === null ? "—" : formatMoney(tradeListTotal, true)}
+            hasOpenPositions={filteredTrades.some(item => Boolean(item.openPosition))}
+            onTokenChange={selectTradeIndex}
+            onStarredChange={enabled => selectTradeIndex(enabled ? STARRED_TRADE_FILTER : null)}
+            onSortChange={setTradeSortBy}
+            onDirectionChange={() => setTradeSortDirection(current => current === "desc" ? "asc" : "desc")}
+          />
           <TradeHoverPreview key={activeProfile.id} trades={filteredTrades}>
-            {filteredTrades.map((item) => {
-              const finalPnl = finalTradePnl(item);
-              const positive = finalPnl.totalPnl >= 0;
+            {tradeListRows.map(({ trade: item, pnl: finalPnl, tone, intensity }) => {
               const sourceDisplay = getReplaySourceDisplay(item);
               return (
                 <button
                   key={item.id}
                   data-preview-trade-id={item.id}
                   className={`trade-list-item ${item.id === trade.id ? "active" : ""}`}
+                  style={{
+                    "--trade-tint": tone === "neutral" ? "transparent"
+                      : `color-mix(in srgb, var(--${tone}) ${4 + intensity * 24}%, transparent)`,
+                    "--trade-color": tone === "neutral" ? "var(--muted-2)" : `var(--${tone})`,
+                  } as CSSProperties}
                   onClick={() => selectTrade(item.id)}
                   onContextMenu={(event) => openTradeContextMenu(event, item)}
                   role="listitem"
@@ -3643,18 +3595,18 @@ export function TradeReplay() {
                         ? `未平仓 · 入场 ${formatDateTime(item.entryTime)}`
                         : formatDateTime(getTradeCloseTime(item))}
                     </span>
-                    <strong className={positive ? "tone-profit" : "tone-loss"}>
-                      {formatMoney(finalPnl.totalPnl, true)}
+                    <strong className={tone === "profit" ? "tone-profit" : tone === "loss" ? "tone-loss" : ""}>
+                      {finalPnl ? formatMoney(finalPnl.totalPnl, true) : "—"}
                     </strong>
                   </div>
                   <div className="trade-mini-track">
-                    <span style={{ width: `${Math.min(Math.abs(finalPnl.returnRatePercent) * 4 + 18, 100)}%` }} />
+                    <span style={{ width: `${Math.min(Math.abs(finalPnl?.returnRatePercent ?? 0) * 4 + 18, 100)}%` }} />
                   </div>
                 </button>
               );
             })}
             {filteredTrades.length === 0 && (
-              <div className="date-filter-empty">{tradeIndexMode === "token" ? "该代币暂无复盘" : "该日期暂无复盘"}</div>
+              <div className="date-filter-empty">当前筛选暂无复盘</div>
             )}
           </TradeHoverPreview>
           <div className="import-hint">

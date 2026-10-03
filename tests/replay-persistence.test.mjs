@@ -152,7 +152,7 @@ test("交易星标可以切换并只筛选当前已星标记录", async () => {
   );
 });
 
-test("交易列表右键菜单同时提供星标和删除，并在全部下面显示星标筛选", async () => {
+test("交易列表右键菜单保留星标和删除，选择框收纳星标筛选", async () => {
   const component = await readFile(
     new URL("app/components/TradeReplay.tsx", projectUrl),
     "utf8",
@@ -167,10 +167,10 @@ test("交易列表右键菜单同时提供星标和删除，并在全部下面�
   assert.match(component, /取消星标/);
   assert.match(component, /星标交易/);
   assert.match(component, /删除交易/);
-  assert.match(
-    component,
-    /date-filter-label">全部[\s\S]*date-filter-label">星标[\s\S]*closeDateGroups\.map/,
-  );
+  const controls = await readFile(new URL("app/components/TradeListControls.tsx", projectUrl), "utf8");
+  assert.match(component, /starredOnly=\{selectedTradeIndex === STARRED_TRADE_FILTER\}/);
+  assert.match(controls, /type="checkbox" checked=\{props.starredOnly\}/);
+  assert.match(controls, /星标交易/);
   assert.match(component, /filterStarredReplayTrades\(archiveTrades\)/);
   assert.match(styles, /\.trade-context-menu\s*\{/);
   assert.match(styles, /\.trade-star-indicator\s*\{/);

@@ -887,11 +887,78 @@ body:has(.replay-app.theme-light) {
   scrollbar-width: thin;
 }
 
+.trade-list-controls {
+  position: relative;
+  flex-shrink: 0;
+  margin: 0 2px 10px;
+}
+
+.trade-list-toolbar { display: flex; gap: 5px; }
+
+.trade-list-toolbar button {
+  min-height: 33px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.trade-list-picker {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+  min-width: 0;
+}
+
+.trade-list-picker > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trade-list-picker > svg, .trade-list-direction { flex-shrink: 0; }
+.trade-list-toolbar button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+.trade-list-picker-panel {
+  position: absolute;
+  z-index: 30;
+  top: 39px;
+  left: 0;
+  right: 0;
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+  padding: 12px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-raised);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.trade-list-picker-panel fieldset { border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
+.trade-list-picker-panel legend { padding: 0; margin-bottom: 7px; color: var(--muted); font-size: 10px; }
+.trade-list-token-options { max-height: 155px; overflow-y: auto; scrollbar-width: thin; }
+.trade-list-choice { display: flex; align-items: center; gap: 6px; min-height: 29px; padding: 3px 5px; border-radius: 5px; color: var(--text); font-size: 11px; cursor: pointer; }
+.trade-list-choice > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trade-list-choice small { margin-left: auto; color: var(--muted-2); font-size: 9px; }
+.trade-list-choice:has(input:checked) { background: var(--amber-soft); color: var(--amber); }
+.trade-list-choice:has(input:focus-visible) { outline: 2px solid var(--amber); }
+.trade-list-picker-panel input { accent-color: var(--amber); flex-shrink: 0; }
+.trade-list-star-filter { display: flex; align-items: center; gap: 5px; padding-top: 8px; border-top: 1px solid var(--border-soft); color: var(--muted); font-size: 10px; cursor: pointer; }
+.trade-list-star-filter small { margin-left: auto; color: var(--muted-2); }
+.trade-list-total { display: flex; align-items: center; justify-content: space-between; gap: 7px; padding: 9px 2px 0; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.trade-list-total > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trade-list-total-label { display: block; margin-top: 3px; color: var(--muted-2); font-size: 9px; }
+.trade-list-total strong { flex-shrink: 0; font-size: 12px; }
+.trade-list-total .positive { color: var(--profit); }
+.trade-list-total .negative { color: var(--loss); }
+.trade-list-total .neutral { color: var(--muted); }
+
 .trade-list-item {
   width: 100%;
   padding: 11px 10px 10px;
   border: 1px solid transparent;
-  background: transparent;
+  background: var(--trade-tint, transparent);
   border-radius: 10px;
   text-align: left;
   cursor: pointer;
@@ -899,12 +966,17 @@ body:has(.replay-app.theme-light) {
 }
 
 .trade-list-item:hover {
-  background: var(--surface-hover-soft);
+  border-color: var(--border);
 }
 
 .trade-list-item.active {
-  background: linear-gradient(120deg, rgba(244, 184, 96, 0.1), rgba(244, 184, 96, 0.025));
-  border-color: rgba(244, 184, 96, 0.22);
+  border-color: var(--amber);
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.trade-list-item:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
 }
 
 .trade-list-top {
@@ -1029,6 +1101,7 @@ body:has(.replay-app.theme-light) {
   font-size: 10px;
 }
 
+
 .trade-mini-track {
   height: 2px;
   margin-left: 33px;
@@ -1039,7 +1112,7 @@ body:has(.replay-app.theme-light) {
 .trade-mini-track span {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, rgba(244, 184, 96, 0.25), var(--amber));
+  background: var(--trade-color, var(--amber));
 }
 
 .trade-context-menu-backdrop {
