@@ -38,7 +38,7 @@ test("API 更新完成前通过单次原子快照等待订单与复盘写入桌�
   assert.equal(finished, true);
 });
 
-test("Binance、OKX 与公开带单同步都会显式等待桌面快照保存", async () => {
+test("Binance、OKX、公开带单与聪明钱同步都会显式等待桌面快照保存", async () => {
   const component = await readFile(
     new URL("app/components/TradeReplay.tsx", projectUrl),
     "utf8",
@@ -50,10 +50,11 @@ test("Binance、OKX 与公开带单同步都会显式等待桌面快照保存", 
   assert.match(component, /const handleBinanceApiSync = async/);
   assert.match(component, /const handleOkxApiSync = async/);
   assert.match(component, /const handlePublicLeadSync = useCallback\(async/);
+  assert.match(component, /const handleSmartMoneySync = useCallback\(async/);
   assert.match(component, /const deleteTradeRecord = async/);
   assert.equal(
     component.match(/await persistDesktopReplaySnapshot\(/g)?.length,
-    4,
+    5,
   );
   assert.equal(
     component.match(

@@ -142,7 +142,9 @@ import {
   extractSmartMoneyProfileId,
   normalizeSmartMoneyProfileSnapshot,
   upsertSmartMoneyTradeProfile,
+  type SmartMoneySourceConfig,
 } from "@/lib/smart-money-profile.mjs";
+import { readSmartMoneyTradeSnapshot } from "@/lib/smart-money-sync.mjs";
 import {
   createFollowTradeOrderRecords,
   type FollowTradeEvent,
@@ -3103,6 +3105,7 @@ export function TradeReplay() {
         ? {
             source: "smart-money-public" as const,
             sourceIdentity: smartMoneySource.topTraderId,
+            orderIdentity: smartMoneySource.orderIdentity,
           }
         : {};
       const incomingOrders = createPublicLeadOrderRecords(snapshot, {
@@ -3211,6 +3214,103 @@ export function TradeReplay() {
     }
   }, [mergeIntoOrderArchive, savePublicLeadConfig]);
 
+  const saveSmartMoneyConfig = useCallback((
+    profileId: string,
+    config: SmartMoneySourceConfig | null,
+  ) => {
+    setProfiles((current) => {
+      const nextProfiles = normalizeTradeProfiles(current.map((profile) => {
+        if (profile.id !== profileId) return profile;
+        const base = { ...profile };
+        delete base.smartMoneySource;
+        if (!config) delete base.copyTradeMonitor;
+        return config ? { ...base, smartMoneySource: config } : base;
+      }));
+      profilesRef.current = nextProfiles;
+      return nextProfiles;
+    });
+  }, []);
+
+  const handleSmartMoneySync = useCallback(async (
+    targetProfile: TradeProfile,
+    config: SmartMoneySourceConfig,
+    options: { fullHistory?: boolean; silent?: boolean } = {},
+  ) => {
+    const syncKey = `${targetProfile.id}\u0000smart-money:${config.topTraderId}`;
+    if (publicLeadSyncingRef.current.has(syncKey)) return;
+    publicLeadSyncingRef.current.add(syncKey);
+    const attemptedAt = new Date().toISOString();
+    const desktopApi = window.cryptoReviewDesktop;
+    try {
+      const { snapshot, usingLatestRecords } = await readSmartMoneyTradeSnapshot(config, {
+        desktopApi,
+        interactive: !options.silent,
+        fullHistory: options.fullHistory,
+        onAuthorizationRequired: () => setImportNotice(
+          "请在弹出的 Binance 官网窗口完成登录；随后自动同步并保留本机登录。",
+        ),
+      });
+      const sourceOptions = {
+        profileId: targetProfile.id,
+        profileName: targetProfile.name,
+        source: "smart-money-public" as const,
+        sourceIdentity: config.topTraderId,
+        orderIdentity: config.orderIdentity,
+      };
+      const incomingOrders = createPublicLeadOrderRecords(snapshot, sourceOptions) as BinanceOrderRecord[];
+      const openPositions = createPublicLeadOpenPositions(snapshot, sourceOptions);
+      const mergedOrders = mergeIntoOrderArchive(incomingOrders, { skipAutoSave: Boolean(desktopApi) });
+      const ownOrders = filterRecordsByTradeProfile<BinanceOrderRecord>(mergedOrders, targetProfile.id)
+        .filter((order) => order.userId === `smart-money:${config.topTraderId}`);
+      const reconstruction = reconstructReplayableBinanceOrders(ownOrders, {
+        openPositions,
+        syncedAt: snapshot.fetchedAt,
+        allowHistoryOnlyOpenPositions: !usingLatestRecords && snapshot.totalOrders > 0 &&
+          ownOrders.length === snapshot.totalOrders && openPositions.length === 0,
+      });
+      const nextTrades = mergeImportedReplays(tradesRef.current, reconstruction.trades);
+      if (desktopApi) {
+        await persistDesktopReplaySnapshot(desktopApi, { orders: mergedOrders, trades: nextTrades });
+      }
+      tradesRef.current = nextTrades;
+      if (desktopApi) skipNextTradeAutoSaveRef.current = nextTrades;
+      setTrades(nextTrades);
+      // 同步期间用户可调整轮询设置，成功结果只更新状态字段。
+      const latestConfig = profilesRef.current.find((profile) => profile.id === targetProfile.id)?.smartMoneySource;
+      if (latestConfig?.topTraderId === config.topTraderId) {
+        saveSmartMoneyConfig(targetProfile.id, {
+          ...latestConfig,
+          lastAttemptAt: snapshot.fetchedAt,
+          lastSyncedAt: snapshot.fetchedAt,
+          lastOrderTime: snapshot.orders.reduce((latest, order) => Math.max(latest, order.orderUpdateTime), config.lastOrderTime ?? 0),
+          lastSnapshot: createStoredPublicLeadSnapshot(snapshot),
+          lastError: undefined,
+        });
+      }
+      if (!options.silent) {
+        if (reconstruction.trades[0]) setSelectedId(reconstruction.trades[0].id);
+        setActiveProfileId(targetProfile.id);
+        setSelectedTradeIndex(null);
+        setActiveModule("replay");
+        setPlaying(false);
+        const warningCount = reconstruction.warnings.length + snapshot.warnings.length;
+        setImportNotice(
+          `已将 ${incomingOrders.length}/${snapshot.totalOrders} 条${usingLatestRecords ? "聪明钱最新操作" : "聪明钱关联公开成交"}同步到独立用户“${targetProfile.name}”，生成 ${reconstruction.trades.length} 笔复盘。${warningCount ? `另有 ${warningCount} 条数据提示。` : ""}${usingLatestRecords ? "最新操作仅覆盖最近 30 天，且不含手续费。" : "公开记录不含手续费。"}`,
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Binance 聪明钱同步失败，请稍后重试。";
+      const latestConfig = profilesRef.current.find((profile) => profile.id === targetProfile.id)?.smartMoneySource;
+      if (latestConfig?.topTraderId === config.topTraderId) {
+        saveSmartMoneyConfig(targetProfile.id, { ...latestConfig, lastAttemptAt: attemptedAt, lastError: message });
+      }
+      if (!options.silent) setImportNotice(message);
+      throw error;
+    } finally {
+      publicLeadSyncingRef.current.delete(syncKey);
+    }
+  }, [mergeIntoOrderArchive, saveSmartMoneyConfig]);
+
   const handleSmartMoneyImport = useCallback(async (sourceUrl: string) => {
     const topTraderId = extractSmartMoneyProfileId(sourceUrl);
     try {
@@ -3232,20 +3332,20 @@ export function TradeReplay() {
       }
 
       const snapshot = normalizeSmartMoneyProfileSnapshot(payload, { topTraderId });
-      const upserted = upsertSmartMoneyTradeProfile(profiles, snapshot);
+      const upserted = upsertSmartMoneyTradeProfile(profilesRef.current, snapshot);
       const nextProfiles = normalizeTradeProfiles(upserted.profiles);
       const targetProfile = nextProfiles.find((profile) => profile.id === upserted.profile.id);
-      if (!targetProfile?.copyTradeMonitor) {
-        throw new Error("聪明钱主页关联档案无效，无法开始同步。");
+      if (!targetProfile?.smartMoneySource) {
+        throw new Error("聪明钱主页配置无效，无法开始同步。");
       }
 
+      profilesRef.current = nextProfiles;
       setProfiles(nextProfiles);
       setActiveProfileId(targetProfile.id);
       setSelectedTradeIndex(null);
       setPlaying(false);
-      await handlePublicLeadSync(targetProfile, targetProfile.copyTradeMonitor, {
+      await handleSmartMoneySync(targetProfile, targetProfile.smartMoneySource, {
         fullHistory: true,
-        authorizeSmartMoney: snapshot.sharingPosition || snapshot.sharingLatestRecord,
       });
     } catch (error) {
       const message = error instanceof Error
@@ -3254,7 +3354,7 @@ export function TradeReplay() {
       setImportNotice(message);
       throw error;
     }
-  }, [handlePublicLeadSync, profiles]);
+  }, [handleSmartMoneySync]);
 
   useEffect(() => {
     if (!hydrated || persistenceMode === "loading") return;
@@ -3262,7 +3362,7 @@ export function TradeReplay() {
     const now = Date.now();
 
     for (const profile of profiles) {
-      const config = profile.copyTradeMonitor;
+      const config = profile.smartMoneySource ?? profile.copyTradeMonitor;
       if (!config?.enabled) continue;
       const lastAttempt = Math.max(
         Date.parse(config.lastAttemptAt ?? "") || 0,
@@ -3271,17 +3371,21 @@ export function TradeReplay() {
       const remaining = config.intervalSeconds * 1000 - (now - lastAttempt);
       const delay = lastAttempt > 0 ? Math.max(1_000, remaining) : 1_000;
       timers.push(window.setTimeout(() => {
-        void handlePublicLeadSync(profile, config, {
+        const syncOptions = {
           silent: true,
           fullHistory: !config.lastSyncedAt,
-        }).catch(() => {
+        };
+        const synchronization = profile.smartMoneySource
+          ? handleSmartMoneySync(profile, profile.smartMoneySource, syncOptions)
+          : handlePublicLeadSync(profile, profile.copyTradeMonitor!, syncOptions);
+        void synchronization.catch(() => {
           // 错误已写入当前用户的监控配置；按所选间隔重试，不打断正在进行的回放。
         });
       }, delay));
     }
 
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [handlePublicLeadSync, hydrated, persistenceMode, profiles]);
+  }, [handlePublicLeadSync, handleSmartMoneySync, hydrated, persistenceMode, profiles]);
 
   return (
     <main className={`replay-app theme-${appTheme}`}>
@@ -3424,6 +3528,8 @@ export function TradeReplay() {
                 onSync={(config, options) =>
                   handlePublicLeadSync(activeProfile, config, options)}
                 onSmartMoneyImport={handleSmartMoneyImport}
+                onSaveSmartMoney={(config) => saveSmartMoneyConfig(activeProfile.id, config)}
+                onSyncSmartMoney={(config, options) => handleSmartMoneySync(activeProfile, config, options)}
                 disabled={!hydrated || persistenceMode === "loading"}
               />
               <SmartMoneyImport

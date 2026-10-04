@@ -1,9 +1,18 @@
 import type { TradeProfile } from "./trade-profiles.mjs";
+import type { CopyTradeMonitorInterval, StoredPublicLeadSnapshot } from "./copy-trade-monitor.mjs";
 
 export interface SmartMoneySourceConfig {
   sourceUrl: string;
   topTraderId: string;
-  leadPortfolioId: string;
+  leadPortfolioId: string | null;
+  orderIdentity: string;
+  enabled: boolean;
+  intervalSeconds: CopyTradeMonitorInterval;
+  lastSyncedAt?: string;
+  lastAttemptAt?: string;
+  lastOrderTime?: number;
+  lastSnapshot?: StoredPublicLeadSnapshot;
+  lastError?: string;
   sharingPosition: boolean;
   sharingLatestRecord: boolean;
   traderName?: string;
@@ -18,7 +27,7 @@ export interface SmartMoneyProfileSnapshot {
   traderName: string | null;
   accountName: string | null;
   introduction: string | null;
-  leadPortfolioId: string;
+  leadPortfolioId: string | null;
   sharingPosition: boolean;
   sharingPositionHistory: boolean;
   sharingLatestRecord: boolean;
@@ -46,5 +55,6 @@ export function upsertSmartMoneyTradeProfile(
 ): { profiles: TradeProfile[]; profile: TradeProfile; created: boolean };
 export function normalizeSmartMoneySourceConfig(
   value: unknown,
+  options?: { legacyMonitor?: unknown },
 ): SmartMoneySourceConfig | null;
 export function smartMoneyTradeProfileId(topTraderId: unknown): string;

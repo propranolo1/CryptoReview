@@ -67,6 +67,13 @@ export interface PublicLeadPositionChange {
   detectedAt: string;
 }
 
+export type SmartMoneyTradeSnapshot = Omit<PublicLeadSnapshot, "portfolioId"> & { topTraderId: string };
+export function normalizeSmartMoneyTradeSnapshot(
+  input: unknown,
+  options?: { topTraderId?: string; fetchedAt?: string | number },
+): SmartMoneyTradeSnapshot;
+export function normalizeStoredSnapshot(input: unknown): StoredPublicLeadSnapshot | null;
+
 export function extractLeadPortfolioId(input: unknown): string;
 export function normalizeCopyTradeMonitorConfig(
   value: unknown,
@@ -98,6 +105,7 @@ export function createPublicLeadOrderRecords(
     profileName: string;
     source?: "copy-trade-public" | "smart-money-public";
     sourceIdentity?: string;
+    orderIdentity?: string;
   },
 ): BinanceUsdmOrder[];
 export function createPublicLeadOpenPositions(

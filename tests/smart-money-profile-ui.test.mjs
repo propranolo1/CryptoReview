@@ -20,7 +20,7 @@ test("导入菜单可以通过聪明钱 URL 自动建用户并优先同步共享
   assert.match(replay, /includeLatestRecords:\s*smartMoneySource\.sharingLatestRecord/);
   assert.match(
     replay,
-    /authorizeSmartMoney:\s*snapshot\.sharingPosition\s*\|\|\s*snapshot\.sharingLatestRecord/,
+    /handleSmartMoneySync\(targetProfile, targetProfile\.smartMoneySource/,
   );
   assert.match(replay, /authorizeSmartMoney/);
   assert.match(replay, /syncResult/);

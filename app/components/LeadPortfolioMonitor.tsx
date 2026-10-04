@@ -11,7 +11,7 @@ import {
   extractLeadPortfolioId,
   type CopyTradeMonitorConfig,
 } from "@/lib/copy-trade-monitor.mjs";
-import { extractSmartMoneyProfileId } from "@/lib/smart-money-profile.mjs";
+import { extractSmartMoneyProfileId, type SmartMoneySourceConfig } from "@/lib/smart-money-profile.mjs";
 import type { TradeProfile } from "@/lib/trade-profiles.mjs";
 import styles from "./LeadPortfolioMonitor.module.css";
 
@@ -24,6 +24,8 @@ type LeadPortfolioMonitorProps = {
     options?: { fullHistory?: boolean },
   ) => void | Promise<void>;
   onSmartMoneyImport: (sourceUrl: string) => void | Promise<void>;
+  onSaveSmartMoney: (config: SmartMoneySourceConfig | null) => void;
+  onSyncSmartMoney: (config: SmartMoneySourceConfig, options?: { fullHistory?: boolean }) => void | Promise<void>;
 };
 
 export function LeadPortfolioMonitor({
@@ -32,6 +34,8 @@ export function LeadPortfolioMonitor({
   onSave,
   onSync,
   onSmartMoneyImport,
+  onSaveSmartMoney,
+  onSyncSmartMoney,
 }: LeadPortfolioMonitorProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -42,10 +46,10 @@ export function LeadPortfolioMonitor({
     profile.smartMoneySource?.sourceUrl ?? profile.copyTradeMonitor?.sourceUrl ?? "",
   );
   const [intervalSeconds, setIntervalSeconds] = useState<30 | 60 | 300>(
-    profile.copyTradeMonitor?.intervalSeconds ?? 60,
+    profile.smartMoneySource?.intervalSeconds ?? profile.copyTradeMonitor?.intervalSeconds ?? 60,
   );
   const [enabled, setEnabled] = useState(
-    profile.copyTradeMonitor?.enabled ?? true,
+    profile.smartMoneySource?.enabled ?? profile.copyTradeMonitor?.enabled ?? true,
   );
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
@@ -61,8 +65,8 @@ export function LeadPortfolioMonitor({
     setSourceUrl(
       profile.smartMoneySource?.sourceUrl ?? profile.copyTradeMonitor?.sourceUrl ?? "",
     );
-    setIntervalSeconds(profile.copyTradeMonitor?.intervalSeconds ?? 60);
-    setEnabled(profile.copyTradeMonitor?.enabled ?? true);
+    setIntervalSeconds(profile.smartMoneySource?.intervalSeconds ?? profile.copyTradeMonitor?.intervalSeconds ?? 60);
+    setEnabled(profile.smartMoneySource?.enabled ?? profile.copyTradeMonitor?.enabled ?? true);
     setError("");
   }, [profile.id, profile.copyTradeMonitor, profile.smartMoneySource]);
 
@@ -104,7 +108,13 @@ export function LeadPortfolioMonitor({
   const saveOnly = () => {
     try {
       if (isSmartMoneyProfileUrl(sourceUrl)) {
-        throw new Error("聪明钱主页需要点击“立即同步”，并在弹出的 Binance 窗口完成登录。");
+        const topTraderId = extractSmartMoneyProfileId(sourceUrl);
+        if (profile.smartMoneySource?.topTraderId !== topTraderId) {
+          throw new Error("请先点击“立即同步”导入这个聪明钱主页，再保存自动更新设置。");
+        }
+        onSaveSmartMoney({ ...profile.smartMoneySource, enabled, intervalSeconds });
+        setError("");
+        return;
       }
       const config = buildConfig();
       onSave(config);
@@ -119,8 +129,14 @@ export function LeadPortfolioMonitor({
       setSyncing(true);
       setError("");
       if (isSmartMoneyProfileUrl(sourceUrl)) {
-        extractSmartMoneyProfileId(sourceUrl);
-        await onSmartMoneyImport(sourceUrl.trim());
+        const topTraderId = extractSmartMoneyProfileId(sourceUrl);
+        if (profile.smartMoneySource?.topTraderId === topTraderId) {
+          const config = { ...profile.smartMoneySource, enabled, intervalSeconds };
+          onSaveSmartMoney(config);
+          await onSyncSmartMoney(config, { fullHistory: true });
+        } else {
+          await onSmartMoneyImport(sourceUrl.trim());
+        }
         return;
       }
       const config = buildConfig();
@@ -134,13 +150,14 @@ export function LeadPortfolioMonitor({
   };
 
   const removeBinding = () => {
-    onSave(null);
+    if (profile.smartMoneySource) onSaveSmartMoney(null);
+    else onSave(null);
     setSourceUrl("");
     setEnabled(true);
     setError("");
   };
 
-  const monitor = profile.copyTradeMonitor;
+  const monitor = profile.smartMoneySource ?? profile.copyTradeMonitor;
   const statusLabel = monitor
     ? monitor.enabled
       ? "自动更新中"
@@ -244,7 +261,7 @@ export function LeadPortfolioMonitor({
               <div className={styles.statusCard} role="status">
                 <i className={monitor.enabled ? styles.online : styles.paused} />
                 <div>
-                  <strong>{monitor.nickname || statusLabel}</strong>
+                  <strong>{profile.smartMoneySource?.traderName || profile.copyTradeMonitor?.nickname || statusLabel}</strong>
                   <span>
                     {monitor.lastSyncedAt
                       ? `最近同步：${formatLocalTime(monitor.lastSyncedAt)}`

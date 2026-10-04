@@ -63,11 +63,11 @@ export async function POST(request: NextRequest) {
     const futuresCopyTradePortfolioId = String(
       payload.data.futuresCopyTradePortfolioId ?? "",
     ).trim();
-    if (!PORTFOLIO_ID_PATTERN.test(futuresCopyTradePortfolioId)) {
+    if (futuresCopyTradePortfolioId && !PORTFOLIO_ID_PATTERN.test(futuresCopyTradePortfolioId)) {
       return NextResponse.json(
         {
           message:
-            "该聪明钱主页没有关联可公开读取的合约带单档案，无法生成真实买卖回放。",
+            "该聪明钱主页返回的关联带单 ID 无效，请稍后重试。",
         },
         { status: 422 },
       );
