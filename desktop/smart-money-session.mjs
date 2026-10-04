@@ -27,6 +27,8 @@ export function createSmartMoneySessionService({
   let operation = null;
   let disposing = false;
   let clearingSession = false;
+  let logoutPromise = null;
+  let needsAuthorization = false;
   let activeSource = null;
 
   const createWindow = (interactive) => {
@@ -80,6 +82,9 @@ export function createSmartMoneySessionService({
     const topTraderId = requireTopTraderId(options.topTraderId ?? options.sourceUrl);
     const includePositions = options.includePositions !== false;
     const includeLatestRecords = options.includeLatestRecords !== false;
+    const targetUrl = normalizeProfileUrl(options.sourceUrl, topTraderId);
+    // 明确退出后不能再等隐藏官网发出请求；未登录页面可能根本不请求交易数据。
+    if (!interactive && needsAuthorization) return Promise.resolve(authorizationRequiredResult());
     const key = JSON.stringify([topTraderId, includePositions, includeLatestRecords]);
     if (operation) {
       if (operation.key !== key) return Promise.reject(new Error("另一个聪明钱主页正在同步，请完成后再试。"));
@@ -88,7 +93,6 @@ export function createSmartMoneySessionService({
     }
     const endTime = Math.floor(now());
     if (!Number.isSafeInteger(endTime) || endTime <= 0) throw new TypeError("本机时间无效，无法读取 Binance 聪明钱数据");
-    const targetUrl = normalizeProfileUrl(options.sourceUrl, topTraderId);
     const window = createWindow(interactive);
     window.lastSyncOptions = { topTraderId, includePositions, includeLatestRecords };
     if (interactive) { window.show(); window.focus(); }
@@ -106,6 +110,9 @@ export function createSmartMoneySessionService({
         const syncResult = await collectSmartMoneyData({
           source, topTraderId, includePositions, includeLatestRecords, endTime,
         });
+        if (!clearingSession && (includePositions || includeLatestRecords)) {
+          needsAuthorization = syncResult.authorizationRequired;
+        }
         window.setTitle?.(syncResult.authorizationRequired ? "需要完成 Binance 登录 · CryptoReview" : "聪明钱同步完成 · CryptoReview");
         window.hide();
         return syncResult;
@@ -128,17 +135,26 @@ export function createSmartMoneySessionService({
     browserSession.flushStorageData?.();
     await browserSession.cookies?.flushStore?.();
   };
-  const logout = async () => {
+  const logout = () => {
+    if (logoutPromise) return logoutPromise;
     clearingSession = true;
-    try {
+    needsAuthorization = true;
+    logoutPromise = Promise.resolve().then(async () => {
+      const pending = operation?.promise;
       activeSource?.stop();
       loginWindow?.destroy();
       loginWindow = null;
+      // 先结束被取消的任务，避免下次授权复用旧任务或旧同步锁。
+      await pending?.catch(() => {});
       await browserSession.clearStorageData();
       await browserSession.clearCache?.();
       await flush();
       return { cleared: true };
-    } finally { clearingSession = false; }
+    }).finally(() => {
+      clearingSession = false;
+      logoutPromise = null;
+    });
+    return logoutPromise;
   };
   const dispose = async () => {
     disposing = true;

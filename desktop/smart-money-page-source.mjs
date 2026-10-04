@@ -61,6 +61,7 @@ export function createSmartMoneyPageSource({ window, topTraderId, timeoutMs, dri
   let lastFailure = null;
   let pageError = null;
   let loadGeneration = 0;
+  let cancelOpen = null;
   const keyFor = (value) => `${value.kind}:${value.page}`;
   const onProfile = () => {
     try {
@@ -156,8 +157,21 @@ export function createSmartMoneyPageSource({ window, topTraderId, timeoutMs, dri
 
   return {
     async open(url) {
-      try { await Promise.all([enabled, window.loadURL(url)]); }
-      catch { throw new Error("Binance 登录页面打开失败，请稍后重试。"); }
+      if (stopped) throw new Error("Binance 登录窗口已关闭，本次同步已取消。");
+      let timer;
+      const interrupted = new Promise((_resolve, reject) => {
+        cancelOpen = () => reject(new Error("Binance 登录窗口已关闭，本次同步已取消。"));
+        timer = setTimeout(() => reject(new Error("Binance 登录页面加载超时，请稍后重试。")), timeoutMs);
+      });
+      try {
+        const loaded = Promise.all([enabled, Promise.resolve().then(() => {
+          if (!stopped) return window.loadURL(url);
+        })]).catch(() => { throw new Error("Binance 登录页面打开失败，请稍后重试。"); });
+        await Promise.race([loaded, interrupted]);
+      } finally {
+        clearTimeout(timer);
+        cancelOpen = null;
+      }
     },
     async readPage(kind, page) {
       const requested = { kind, page };
@@ -189,6 +203,7 @@ export function createSmartMoneyPageSource({ window, topTraderId, timeoutMs, dri
     stop() {
       if (stopped) return;
       stopped = true;
+      cancelOpen?.();
       clearInterval(interval);
       contents.removeListener("did-finish-load", onLoad);
       debuggerApi.removeListener("message", onMessage);
