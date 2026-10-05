@@ -166,6 +166,7 @@ import { ReplayVideoExport } from "./ReplayVideoExport";
 import { FollowTradeImport } from "./FollowTradeImport";
 import { LeadPortfolioMonitor } from "./LeadPortfolioMonitor";
 import { SmartMoneyImport } from "./SmartMoneyImport";
+import { SmartMoneyPositions } from "./SmartMoneyPositions";
 import { TradeHoverPreview } from "./TradeHoverPreview";
 import { TradeListControls } from "./TradeListControls";
 
@@ -3598,6 +3599,7 @@ export function TradeReplay() {
               打开右上角“导入”，可识别跟单记录截图、基础单截图，
               或导入 CSV/JSON；数据只会写入当前用户。
             </p>
+            <SmartMoneyPositions profile={activeProfile} trades={activeProfileTrades} />
             {importNotice && (
               <div className="status-banner" role="status" aria-live="polite">
                 <Sparkles size={15} /> {importNotice}
@@ -3638,6 +3640,7 @@ export function TradeReplay() {
               </button>
             </div>
           </div>
+          <SmartMoneyPositions profile={activeProfile} trades={activeProfileTrades} />
           <TradeListControls key={activeProfile.id}
             tokens={tokenGroups}
             selectedToken={selectedTradeIndex === STARRED_TRADE_FILTER ? null : selectedTradeIndex}
