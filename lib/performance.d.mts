@@ -84,6 +84,14 @@ export interface TradePerformanceResult {
   lossHoldingSamples: number;
 }
 
+export type PerformanceTimeRange = "all" | "7d" | "15d" | "1m" | "3m";
+
+export function filterTradesByPerformanceRange<T extends PerformanceTrade>(
+  trades: readonly T[],
+  range?: PerformanceTimeRange,
+  now?: number,
+): T[];
+
 export function buildProfitPercentDistribution(
   values: readonly number[],
   maximumBins?: number,

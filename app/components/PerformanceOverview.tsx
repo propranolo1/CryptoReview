@@ -6,8 +6,10 @@ import type { NormalizedTrade } from "@/lib/trade.mjs";
 import {
   buildDailyPerformanceCalendar,
   calculateTradePerformance,
+  filterTradesByPerformanceRange,
   getTradeCloseDateKey,
 } from "@/lib/performance.mjs";
+import type { PerformanceTimeRange } from "@/lib/performance.mjs";
 import { PerformanceDistributionCharts } from "./PerformanceDistributionCharts";
 import styles from "./PerformanceOverview.module.css";
 
@@ -250,13 +252,18 @@ export function PerformanceOverview({
   const curveTooltipId = useId();
   const dailyTooltipId = useId();
   const calendarTitleId = useId();
+  const [timeRange, setTimeRange] = useState<PerformanceTimeRange>("all");
   const [curveTooltip, setCurveTooltip] = useState<ChartTooltip | null>(null);
   const [dailyTooltip, setDailyTooltip] = useState<ChartTooltip | null>(null);
   const [calendarSelection, setCalendarSelection] = useState({
     scope: "",
     monthKey: null as string | null,
   });
-  const performance = useMemo(() => calculateTradePerformance(trades), [trades]);
+  const rangeTrades = useMemo(
+    () => filterTradesByPerformanceRange(trades, timeRange),
+    [trades, timeRange],
+  );
+  const performance = useMemo(() => calculateTradePerformance(rangeTrades), [rangeTrades]);
   const calendarMonths = useMemo(
     () => buildDailyPerformanceCalendar(performance.daily),
     [performance.daily],
@@ -269,30 +276,57 @@ export function PerformanceOverview({
     : null;
   const closeDateKeys = useMemo(() => {
     const dates = new Set<string>();
-    for (const trade of trades) {
+    for (const trade of rangeTrades) {
       const date = getTradeCloseDateKey(trade);
       if (date) dates.add(date);
     }
     return dates;
-  }, [trades]);
+  }, [rangeTrades]);
   const hasUnknownFees = performance.unknownFeeTrades > 0;
+  const header = (
+    <header className={styles.header}>
+      <div>
+        <span className={styles.eyebrow}>PERFORMANCE</span>
+        <h2 id={titleId}>交易表现</h2>
+      </div>
+      <div className={styles.headerActions}>
+        <label className={styles.rangeControl}>
+          <span>时间范围</span>
+          <select
+            aria-label="交易表现时间范围"
+            title="按北京时间最终平仓日期筛选，包含今天；近一个月为30天，近3个月为90天"
+            value={timeRange}
+            onChange={(event) => {
+              setTimeRange(event.target.value as PerformanceTimeRange);
+              setCurveTooltip(null);
+              setDailyTooltip(null);
+              setCalendarSelection({ scope: "", monthKey: null });
+            }}
+          >
+            <option value="all">所有持仓</option>
+            <option value="7d">近7天</option>
+            <option value="15d">近15天</option>
+            <option value="1m">近一个月</option>
+            <option value="3m">近3个月</option>
+          </select>
+        </label>
+        <span className={styles.closedCount}>{performance.closedTrades} 笔已平仓</span>
+      </div>
+    </header>
+  );
 
   if (performance.closedTrades === 0 || performance.points.length === 0) {
     return (
       <section className={styles.panel} aria-labelledby={titleId}>
-        <header className={styles.header}>
-          <div>
-            <span className={styles.eyebrow}>PERFORMANCE</span>
-            <h2 id={titleId}>交易表现</h2>
-          </div>
-          <span className={styles.closedCount}>0 笔已平仓</span>
-        </header>
+        {header}
         <div className={styles.emptyState}>
           <svg viewBox="0 0 96 48" aria-hidden="true">
             <path d="M5 38h86M12 31l17-9 15 5 18-17 22 8" />
           </svg>
-          <strong>暂无可统计的已平仓交易</strong>
-          <span>完成交易或导入包含完整开平仓的订单历史后，这里会显示累计和每日盈利表现。</span>
+          <strong>{timeRange === "all" ? "暂无可统计的已平仓交易" : "所选时间范围内暂无已平仓交易"}</strong>
+          <span>{timeRange === "all"
+            ? "完成交易或导入包含完整开平仓的订单历史后，这里会显示累计和每日盈利表现。"
+            : "可切换时间范围或选择所有持仓，查看其他已平仓交易的表现。"}</span>
         </div>
         {hasUnknownFees && (
           <p className={styles.feeNotice}>部分订单历史不含手续费，后续统计将以未扣手续费的重建盈亏计算。</p>
@@ -352,13 +386,7 @@ export function PerformanceOverview({
 
   return (
     <section className={styles.panel} aria-labelledby={titleId}>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>PERFORMANCE</span>
-          <h2 id={titleId}>交易表现</h2>
-        </div>
-        <span className={styles.closedCount}>{performance.closedTrades} 笔已平仓</span>
-      </header>
+      {header}
 
       <div className={styles.metrics}>
         <article>

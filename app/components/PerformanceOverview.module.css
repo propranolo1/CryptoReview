@@ -50,6 +50,38 @@
   font-variant-numeric: tabular-nums;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rangeControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.rangeControl select {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 5px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rangeControl select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -675,6 +707,15 @@
 }
 
 @media (max-width: 640px) {
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .headerActions {
+    justify-content: flex-start;
+  }
+
   .panel {
     padding: 14px;
   }

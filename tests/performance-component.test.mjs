@@ -97,3 +97,67 @@ test("统计图保留平手比例、未知费用覆盖率和零盈亏，日历�
     assert.doesNotMatch(JSON.stringify(render({ ...props, trades })), /NaN|Infinity/);
   }
 });
+
+function rangeTrade(id, date, pnl, feesKnown = true) {
+  return { id, side: "long", quantity: 1, entryPrice: 100,
+    entryTime: `${date}T00:00:00Z`, fee: 1, feesKnown,
+    exits: [{ quantity: 1, exitPrice: 102 + pnl, fee: 1, exitTime: `${date}T01:00:00Z` }] };
+}
+
+function rangeSelect(nodes) {
+  return nodes.find(node => node.type === "select" && node.props["aria-label"] === "交易表现时间范围");
+}
+
+test("真实交易表现默认所有持仓，切换全部时间范围后统计、日历和分布同步变化", async (t) => {
+  t.mock.method(Date, "now", () => Date.parse("2026-10-14T04:00:00Z"));
+  const render = await componentHarness("PerformanceOverview");
+  const props = { selectedDate: null, trades: [
+    rangeTrade("recent", "2026-10-13", 10), rangeTrade("ten-days", "2026-10-04", -5),
+    rangeTrade("month", "2026-09-20", 20), rangeTrade("quarter", "2026-08-01", 30),
+    rangeTrade("old", "2026-01-01", 40, false),
+  ] };
+  let nodes = render(props);
+  assert.equal(rangeSelect(nodes)?.props.value, "all");
+  assert.deepEqual(nodes.filter(node => node.type === "option").map(node => node.props.children), ["所有持仓", "近7天", "近15天", "近一个月", "近3个月"]);
+  for (const [range, count, pnl, month] of [["7d", 1, 10, "2026年10月"], ["15d", 2, 5, "2026年10月"], ["1m", 3, 25, "2026年10月"], ["3m", 4, 55, "2026年10月"], ["all", 5, 95, "2026年10月"]]) {
+    rangeSelect(nodes).props.onChange({ target: { value: range } });
+    nodes = render(props);
+    assert.ok(nodes.some(node => node.props.className === "closedCount" && node.props.children.join("") === `${count} 笔已平仓`));
+    assert.ok(nodes.some(node => node.type === "strong" && node.props.children === `+${pnl.toFixed(2)} USDT`));
+    assert.ok(nodes.some(node => node.props["aria-label"] === month));
+    const distribution = nodes.find(node => typeof node.type === "function");
+    assert.equal(distribution.props.bins.reduce((sum, bin) => sum + bin.count, 0), count);
+    assert.equal(nodes.some(node => node.props.className === "feeNotice"), range === "all");
+    assert.doesNotMatch(JSON.stringify(nodes), /NaN|Infinity/);
+  }
+});
+
+test("范围无交易时保留选择框，可以切回所有持仓恢复统计", async (t) => {
+  t.mock.method(Date, "now", () => Date.parse("2026-10-14T04:00:00Z"));
+  const render = await componentHarness("PerformanceOverview");
+  const props = { selectedDate: null, trades: [rangeTrade("old", "2026-01-01", 10)] };
+  let nodes = render(props);
+  rangeSelect(nodes).props.onChange({ target: { value: "7d" } });
+  nodes = render(props);
+  assert.ok(nodes.some(node => node.type === "strong" && node.props.children === "所选时间范围内暂无已平仓交易"));
+  assert.equal(rangeSelect(nodes).props.value, "7d");
+  rangeSelect(nodes).props.onChange({ target: { value: "all" } });
+  assert.ok(render(props).some(node => node.type === "strong" && node.props.children === "+10.00 USDT"));
+});
+
+test("切换范围清除旧提示与日历月份，切换档案后使用新档案数据", async (t) => {
+  t.mock.method(Date, "now", () => Date.parse("2026-10-14T04:00:00Z"));
+  const render = await componentHarness("PerformanceOverview");
+  const props = { selectedDate: null, trades: [rangeTrade("old", "2026-08-01", 10), rangeTrade("new", "2026-10-13", 20)] };
+  let nodes = render(props);
+  nodes.find(node => node.props["aria-label"] === "上一个月").props.onClick();
+  nodes = render(props);
+  nodes.find(node => node.type === "g" && node.props.onFocus).props.onFocus();
+  assert.ok(render(props).some(node => node.props.role === "tooltip" && node.type === "div"));
+  rangeSelect(nodes).props.onChange({ target: { value: "7d" } });
+  nodes = render(props);
+  assert.ok(nodes.some(node => node.props["aria-label"] === "2026年10月"));
+  assert.equal(nodes.some(node => node.props.role === "tooltip" && node.type === "div"), false);
+  const otherProfile = render({ ...props, trades: [rangeTrade("other", "2026-10-12", -30)] });
+  assert.ok(otherProfile.some(node => node.type === "strong" && node.props.children === "−30.00 USDT"));
+});
