@@ -1,5 +1,6 @@
 import type { TradeEntry, TradeExit, TradeSide } from "./trade.mjs";
 import type { ReplayRiskLevel } from "./risk.mjs";
+import type { OrderAmendmentHistory } from "./order-behavior.mjs";
 
 export type ReplaySyncSource =
   | "okx-api"
@@ -93,12 +94,14 @@ export interface BinanceUsdmOrder {
   sourceOrderAliases?: string[];
   syncSources?: ReplaySyncSource[];
   fills?: BinanceUserTradeFill[];
+  amendmentHistory?: OrderAmendmentHistory;
   reportedRealizedPnl?: number | null;
 }
 
 export interface BinanceReconstructedReplay {
   id: string;
   sourceKey: string;
+  sourceAccountId: string;
   profileId?: string;
   profileName?: string;
   sourceEntryOrderId: string;

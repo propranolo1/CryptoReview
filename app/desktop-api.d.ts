@@ -73,6 +73,7 @@ declare global {
 
   interface BinanceApiSyncedOrder extends Record<string, unknown> {
     fills?: BinanceApiTradeFill[];
+    amendmentHistory?: import("../lib/order-behavior.mjs").OrderAmendmentHistory;
   }
 
   interface BinanceApiOpenPosition {

@@ -62,6 +62,7 @@ export function createBinanceApiService({ repository, vault, client }) {
           // 同时不把其他账户、其他交易所或手工导入的币对带入查询。
           symbols: knownSymbols,
           knownActiveOrders,
+          knownOrders: archivedOrders,
           ...credentials,
         });
         options?.onProgress?.({ stage: "saving", message: "正在保存同步快照" });

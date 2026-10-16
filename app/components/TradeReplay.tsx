@@ -169,6 +169,7 @@ import { SmartMoneyImport } from "./SmartMoneyImport";
 import { SmartMoneyPositions } from "./SmartMoneyPositions";
 import { TradeHoverPreview } from "./TradeHoverPreview";
 import { TradeListControls } from "./TradeListControls";
+import { OrderBehaviorPanel } from "./OrderBehaviorPanel";
 
 type Candle = {
   time: number;
@@ -202,6 +203,7 @@ type ReplayTrade = NormalizedTrade & {
   marketDataSource?: "binance-futures";
   feesKnown?: boolean;
   sourceKey?: string;
+  sourceAccountId?: string;
   sourceEntryOrderId?: string;
   sourceEntryAliases?: string[];
   sourceOrderIds?: string[];
@@ -4141,6 +4143,13 @@ export function TradeReplay() {
               </button>
             </div>
           </section>
+
+          <OrderBehaviorPanel
+            key={activeProfile.id}
+            trade={trade}
+            orders={activeProfileOrders}
+            asOfTime={currentReplayTimeMs ?? Number.NEGATIVE_INFINITY}
+          />
 
           <section className="execution-card">
             <div className="section-heading-inline">

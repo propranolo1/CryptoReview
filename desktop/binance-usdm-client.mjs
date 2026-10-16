@@ -209,7 +209,7 @@ export function createBinanceUsdmClient({
     return serverTime;
   }
 
-  async function signedGet(pathname, params, credentials, clockOffset) {
+  async function signedGet(pathname, params, credentials, clockOffset, requestOptions = {}) {
     for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt += 1) {
       await weightLimiter.acquire(binanceRequestWeight(pathname, params));
       // 每次重试都重新生成 timestamp 和签名，避免 Retry-After 超过 recvWindow 后签名失效。
@@ -234,6 +234,7 @@ export function createBinanceUsdmClient({
             "X-MBX-APIKEY": credentials.apiKey,
           },
           redirect: "error",
+          ...(requestOptions.timeoutMs ? { signal: AbortSignal.timeout(requestOptions.timeoutMs) } : {}),
         });
       } catch {
         throw new Error("Binance Futures 私有接口连接失败");
@@ -348,6 +349,7 @@ export function createBinanceUsdmClient({
       accountId,
       symbols,
       knownActiveOrders,
+      knownOrders = [],
       startTime,
       endTime,
       onProgress,
@@ -534,6 +536,57 @@ export function createBinanceUsdmClient({
           Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
           left.orderId.localeCompare(right.orderId),
         );
+      // 改单证据独立于成交与盈亏；端点不可用只降低行为识别置信度，不中断原有同步。
+      const knownOrderMap = new Map((Array.isArray(knownOrders) ? knownOrders : [])
+        .filter(order => order?.sourceKind === "api-normal" && order.userId === accountId)
+        .map(order => [`${order.symbol}\u0000${order.orderId}`, order]));
+      let amendmentEndpointUnavailable = false;
+      const amendmentTasks = orders.filter(order => order.sourceKind === "api-normal" &&
+        order.orderType === "LIMIT" && order.executedQuantity > 0).map(order => async () => {
+        const previous = knownOrderMap.get(`${order.symbol}\u0000${order.orderId}`);
+        const previousHistory = previous?.amendmentHistory;
+        if (order.status === "FILLED" && previous?.status === "FILLED" &&
+          order.updatedAt === previous.updatedAt && order.limitPrice === previous.limitPrice &&
+          order.executedQuantity === previous.executedQuantity && previousHistory?.status === "complete" &&
+          Date.parse(previousHistory.checkedAt) >= Date.parse(order.updatedAt)) {
+          order.amendmentHistory = previousHistory;
+          return;
+        }
+        const checkedAt = new Date(normalizeTimestamp(now(), "改单查询时间") + clockOffset).toISOString();
+        try {
+          if (amendmentEndpointUnavailable) throw new Error("本次改单端点不可用");
+          const payload = await signedGet("/fapi/v1/orderAmendment", {
+            symbol: order.symbol, orderId: order.orderId, limit: 100,
+          }, credentials, clockOffset, { timeoutMs: 10_000 });
+          if (!Array.isArray(payload)) throw new Error("改单响应格式无效");
+          const changes = new Map();
+          let maximumCount = 0;
+          for (const raw of payload) {
+            if (String(raw?.orderId) !== order.orderId || raw?.symbol !== order.symbol) {
+              throw new Error("改单响应身份不匹配");
+            }
+            const amendmentId = requiredIdentifier(raw.amendmentId, "改单记录 ID");
+            changes.set(amendmentId, {
+              amendmentId,
+              time: timestampToIso(raw.time, "改单时间"),
+              beforePrice: positiveNumber(raw.amendment?.price?.before, "修改前价格"),
+              afterPrice: positiveNumber(raw.amendment?.price?.after, "修改后价格"),
+            });
+            maximumCount = Math.max(maximumCount, Number(raw.amendment?.count) || 0);
+          }
+          const complete = payload.length < 100 && maximumCount <= changes.size &&
+            Date.parse(checkedAt) - Date.parse(order.createdAt) <= MAX_HISTORY_MS;
+          order.amendmentHistory = { status: complete ? "complete" : "partial", checkedAt,
+            changes: [...changes.values()].sort((a, b) => Date.parse(a.time) - Date.parse(b.time)) };
+        } catch {
+          amendmentEndpointUnavailable = true;
+          order.amendmentHistory = { status: "unavailable", checkedAt, changes: previousHistory?.changes ?? [] };
+        }
+      });
+      await runTasksWithConcurrency(amendmentTasks, HISTORY_CONCURRENCY, (completed, total) => {
+        emitProgress(onProgress, { stage: "history", completed, total,
+          message: `正在读取 Binance 改单证据 ${completed}/${total}` });
+      });
       const syncedAt = normalizeTimestamp(now(), "同步完成时间");
       emitProgress(onProgress, { stage: "complete", message: "Binance 接口读取完成" });
       return {
